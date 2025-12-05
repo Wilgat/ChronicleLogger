@@ -1,0 +1,21 @@
+Metadata-Version: 2.4
+Name: ChronicleLogger
+Version: 0.1.0
+Summary: Privilege-aware, auto-rotating daily logger for Linux daemons & CLI tools (Cython-optimized)
+Author-email: Wilgat Wong <wilgat.wong@gmail.com>
+License: MIT
+Project-URL: Homepage, https://github.com/Wilgat/ChronicleLogger
+Project-URL: Repository, https://github.com/Wilgat/ChronicleLogger
+Project-URL: Issues, https://github.com/Wilgat/ChronicleLogger/issues
+Project-URL: Documentation, https://github.com/Wilgat/ChronicleLogger#readme
+Keywords: logging,cython,linux,daemon,sudo,privilege,log rotation,daily log
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Cython
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Topic :: System :: Logging
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown

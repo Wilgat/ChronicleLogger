@@ -1,0 +1,39 @@
+# pyproject.toml
+[build-system]
+requires = ["setuptools>=61", "wheel", "Cython"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ChronicleLogger"
+dynamic = ["version"]
+description = "Privilege-aware, auto-rotating daily logger for Linux daemons & CLI tools (Cython-optimized)"
+readme = "README.md"
+authors = [{ name = "Wilgat Wong", email = "wilgat.wong@gmail.com" }]
+license = { text = "MIT" }
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Cython",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: System :: Logging",
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers"
+]
+keywords = ["logging", "cython", "linux", "daemon", "sudo", "privilege", "log rotation", "daily log"]
+
+[project.urls]
+Homepage = "https://github.com/Wilgat/ChronicleLogger"
+Repository = "https://github.com/Wilgat/ChronicleLogger"
+Issues = "https://github.com/Wilgat/ChronicleLogger/issues"
+Documentation = "https://github.com/Wilgat/ChronicleLogger#readme"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"chronicle_logger" = ["*.so", "*.pyx"]
+
+[tool.setuptools.dynamic]
+version = { attr = "chronicle_logger.__version__" }
