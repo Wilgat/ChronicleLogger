@@ -1,4 +1,4 @@
-#!/home/adm01/.pyenv/versions/3.12.11/bin/python3
+#!/home/adm01/.pyenv/shims/python3
 from setuptools import setup
 from Cython.Build import cythonize
 

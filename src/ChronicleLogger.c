@@ -1744,26 +1744,12 @@ static PyObject *__Pyx__GetModuleGlobalName(PyObject *name, PY_UINT64_T *dict_ve
 static CYTHON_INLINE PyObject *__Pyx__GetModuleGlobalName(PyObject *name);
 #endif
 
-/* PyObjectFormatSimple.proto */
-#if CYTHON_COMPILING_IN_PYPY
-    #define __Pyx_PyObject_FormatSimple(s, f) (\
-        likely(PyUnicode_CheckExact(s)) ? (Py_INCREF(s), s) :\
-        PyObject_Format(s, f))
-#elif CYTHON_USE_TYPE_SLOTS
-    #define __Pyx_PyObject_FormatSimple(s, f) (\
-        likely(PyUnicode_CheckExact(s)) ? (Py_INCREF(s), s) :\
-        likely(PyLong_CheckExact(s)) ? PyLong_Type.tp_repr(s) :\
-        likely(PyFloat_CheckExact(s)) ? PyFloat_Type.tp_repr(s) :\
-        PyObject_Format(s, f))
+/* PyObjectFastCallMethod.proto */
+#if CYTHON_VECTORCALL && PY_VERSION_HEX >= 0x03090000
+#define __Pyx_PyObject_FastCallMethod(name, args, nargsf) PyObject_VectorcallMethod(name, args, nargsf, NULL)
 #else
-    #define __Pyx_PyObject_FormatSimple(s, f) (\
-        likely(PyUnicode_CheckExact(s)) ? (Py_INCREF(s), s) :\
-        PyObject_Format(s, f))
+static PyObject *__Pyx_PyObject_FastCallMethod(PyObject *name, PyObject *const *args, size_t nargsf);
 #endif
-
-/* JoinPyUnicode.proto */
-static PyObject* __Pyx_PyUnicode_Join(PyObject** values, Py_ssize_t value_count, Py_ssize_t result_ulength,
-                                      Py_UCS4 max_char);
 
 /* PyLongCompare.proto */
 static CYTHON_INLINE PyObject* __Pyx_PyLong_EqObjC(PyObject *op1, PyObject *op2, long intval, long inplace);
@@ -1846,6 +1832,28 @@ static int __Pyx_VectorcallBuilder_AddArgStr(const char *key, PyObject *value, P
 #define __Pyx_VectorcallBuilder_AddArg(key, value, builder, args, n) PyDict_SetItem(builder, key, value)
 #define __Pyx_VectorcallBuilder_AddArgStr(key, value, builder, args, n) PyDict_SetItemString(builder, key, value)
 #endif
+
+/* GetItemInt.proto */
+#define __Pyx_GetItemInt(o, i, type, is_signed, to_py_func, is_list, wraparound, boundscheck, has_gil)\
+    (__Pyx_fits_Py_ssize_t(i, type, is_signed) ?\
+    __Pyx_GetItemInt_Fast(o, (Py_ssize_t)i, is_list, wraparound, boundscheck) :\
+    (is_list ? (PyErr_SetString(PyExc_IndexError, "list index out of range"), (PyObject*)NULL) :\
+               __Pyx_GetItemInt_Generic(o, to_py_func(i))))
+#define __Pyx_GetItemInt_List(o, i, type, is_signed, to_py_func, is_list, wraparound, boundscheck, has_gil)\
+    (__Pyx_fits_Py_ssize_t(i, type, is_signed) ?\
+    __Pyx_GetItemInt_List_Fast(o, (Py_ssize_t)i, wraparound, boundscheck) :\
+    (PyErr_SetString(PyExc_IndexError, "list index out of range"), (PyObject*)NULL))
+static CYTHON_INLINE PyObject *__Pyx_GetItemInt_List_Fast(PyObject *o, Py_ssize_t i,
+                                                              int wraparound, int boundscheck);
+#define __Pyx_GetItemInt_Tuple(o, i, type, is_signed, to_py_func, is_list, wraparound, boundscheck, has_gil)\
+    (__Pyx_fits_Py_ssize_t(i, type, is_signed) ?\
+    __Pyx_GetItemInt_Tuple_Fast(o, (Py_ssize_t)i, wraparound, boundscheck) :\
+    (PyErr_SetString(PyExc_IndexError, "tuple index out of range"), (PyObject*)NULL))
+static CYTHON_INLINE PyObject *__Pyx_GetItemInt_Tuple_Fast(PyObject *o, Py_ssize_t i,
+                                                              int wraparound, int boundscheck);
+static PyObject *__Pyx_GetItemInt_Generic(PyObject *o, PyObject* j);
+static CYTHON_INLINE PyObject *__Pyx_GetItemInt_Fast(PyObject *o, Py_ssize_t i,
+                                                     int is_list, int wraparound, int boundscheck);
 
 /* PyObjectVectorCallMethodKwBuilder.proto */
 #if CYTHON_VECTORCALL && PY_VERSION_HEX >= 0x03090000
@@ -1946,13 +1954,6 @@ static CYTHON_INLINE PyObject *__Pyx_CallUnboundCMethod2(__Pyx_CachedCFunction *
 static void __Pyx_RaiseArgtupleInvalid(const char* func_name, int exact,
     Py_ssize_t num_min, Py_ssize_t num_max, Py_ssize_t num_found);
 
-/* PyObjectFastCallMethod.proto */
-#if CYTHON_VECTORCALL && PY_VERSION_HEX >= 0x03090000
-#define __Pyx_PyObject_FastCallMethod(name, args, nargsf) PyObject_VectorcallMethod(name, args, nargsf, NULL)
-#else
-static PyObject *__Pyx_PyObject_FastCallMethod(PyObject *name, PyObject *const *args, size_t nargsf);
-#endif
-
 /* RaiseException.proto */
 static void __Pyx_Raise(PyObject *type, PyObject *value, PyObject *tb, PyObject *cause);
 
@@ -1969,19 +1970,17 @@ static CYTHON_INLINE int __Pyx_PySequence_ContainsTF(PyObject* item, PyObject* s
 static CYTHON_INLINE int __Pyx_HasAttr(PyObject *, PyObject *);
 #endif
 
-/* SwapException.proto */
-#if CYTHON_FAST_THREAD_STATE
-#define __Pyx_ExceptionSwap(type, value, tb)  __Pyx__ExceptionSwap(__pyx_tstate, type, value, tb)
-static CYTHON_INLINE void __Pyx__ExceptionSwap(PyThreadState *tstate, PyObject **type, PyObject **value, PyObject **tb);
-#else
-static CYTHON_INLINE void __Pyx_ExceptionSwap(PyObject **type, PyObject **value, PyObject **tb);
-#endif
+/* RaiseTooManyValuesToUnpack.proto */
+static CYTHON_INLINE void __Pyx_RaiseTooManyValuesError(Py_ssize_t expected);
 
-/* PyObjectCallNoArg.proto */
-static CYTHON_INLINE PyObject* __Pyx_PyObject_CallNoArg(PyObject *func);
+/* RaiseNeedMoreValuesToUnpack.proto */
+static CYTHON_INLINE void __Pyx_RaiseNeedMoreValuesError(Py_ssize_t index);
 
-/* PyUnicode_Unicode.proto */
-static CYTHON_INLINE PyObject* __Pyx_PyUnicode_Unicode(PyObject *obj);
+/* IterFinish.proto */
+static CYTHON_INLINE int __Pyx_IterFinish(void);
+
+/* UnpackItemEndCheck.proto */
+static int __Pyx_IternextUnpackEndCheck(PyObject *retval, Py_ssize_t expected);
 
 /* PyObjectCallOneArg.proto */
 static CYTHON_INLINE PyObject* __Pyx_PyObject_CallOneArg(PyObject *func, PyObject *arg);
@@ -2005,51 +2004,8 @@ static CYTHON_INLINE PyObject* __Pyx__PyObject_LookupSpecial(PyObject* obj, PyOb
 #define __Pyx_PyObject_LookupSpecial(o,n) __Pyx_PyObject_GetAttrStr(o,n)
 #endif
 
-/* FastTypeChecks.proto */
-#if CYTHON_COMPILING_IN_CPYTHON
-#define __Pyx_TypeCheck(obj, type) __Pyx_IsSubtype(Py_TYPE(obj), (PyTypeObject *)type)
-#define __Pyx_TypeCheck2(obj, type1, type2) __Pyx_IsAnySubtype2(Py_TYPE(obj), (PyTypeObject *)type1, (PyTypeObject *)type2)
-static CYTHON_INLINE int __Pyx_IsSubtype(PyTypeObject *a, PyTypeObject *b);
-static CYTHON_INLINE int __Pyx_IsAnySubtype2(PyTypeObject *cls, PyTypeObject *a, PyTypeObject *b);
-static CYTHON_INLINE int __Pyx_PyErr_GivenExceptionMatches(PyObject *err, PyObject *type);
-static CYTHON_INLINE int __Pyx_PyErr_GivenExceptionMatches2(PyObject *err, PyObject *type1, PyObject *type2);
-#else
-#define __Pyx_TypeCheck(obj, type) PyObject_TypeCheck(obj, (PyTypeObject *)type)
-#define __Pyx_TypeCheck2(obj, type1, type2) (PyObject_TypeCheck(obj, (PyTypeObject *)type1) || PyObject_TypeCheck(obj, (PyTypeObject *)type2))
-#define __Pyx_PyErr_GivenExceptionMatches(err, type) PyErr_GivenExceptionMatches(err, type)
-static CYTHON_INLINE int __Pyx_PyErr_GivenExceptionMatches2(PyObject *err, PyObject *type1, PyObject *type2) {
-    return PyErr_GivenExceptionMatches(err, type1) || PyErr_GivenExceptionMatches(err, type2);
-}
-#endif
-#define __Pyx_PyErr_ExceptionMatches2(err1, err2)  __Pyx_PyErr_GivenExceptionMatches2(__Pyx_PyErr_CurrentExceptionType(), err1, err2)
-#define __Pyx_PyException_Check(obj) __Pyx_TypeCheck(obj, PyExc_Exception)
-#ifdef PyExceptionInstance_Check
-  #define __Pyx_PyBaseException_Check(obj) PyExceptionInstance_Check(obj)
-#else
-  #define __Pyx_PyBaseException_Check(obj) __Pyx_TypeCheck(obj, PyExc_BaseException)
-#endif
-
-/* GetItemInt.proto */
-#define __Pyx_GetItemInt(o, i, type, is_signed, to_py_func, is_list, wraparound, boundscheck, has_gil)\
-    (__Pyx_fits_Py_ssize_t(i, type, is_signed) ?\
-    __Pyx_GetItemInt_Fast(o, (Py_ssize_t)i, is_list, wraparound, boundscheck) :\
-    (is_list ? (PyErr_SetString(PyExc_IndexError, "list index out of range"), (PyObject*)NULL) :\
-               __Pyx_GetItemInt_Generic(o, to_py_func(i))))
-#define __Pyx_GetItemInt_List(o, i, type, is_signed, to_py_func, is_list, wraparound, boundscheck, has_gil)\
-    (__Pyx_fits_Py_ssize_t(i, type, is_signed) ?\
-    __Pyx_GetItemInt_List_Fast(o, (Py_ssize_t)i, wraparound, boundscheck) :\
-    (PyErr_SetString(PyExc_IndexError, "list index out of range"), (PyObject*)NULL))
-static CYTHON_INLINE PyObject *__Pyx_GetItemInt_List_Fast(PyObject *o, Py_ssize_t i,
-                                                              int wraparound, int boundscheck);
-#define __Pyx_GetItemInt_Tuple(o, i, type, is_signed, to_py_func, is_list, wraparound, boundscheck, has_gil)\
-    (__Pyx_fits_Py_ssize_t(i, type, is_signed) ?\
-    __Pyx_GetItemInt_Tuple_Fast(o, (Py_ssize_t)i, wraparound, boundscheck) :\
-    (PyErr_SetString(PyExc_IndexError, "tuple index out of range"), (PyObject*)NULL))
-static CYTHON_INLINE PyObject *__Pyx_GetItemInt_Tuple_Fast(PyObject *o, Py_ssize_t i,
-                                                              int wraparound, int boundscheck);
-static PyObject *__Pyx_GetItemInt_Generic(PyObject *o, PyObject* j);
-static CYTHON_INLINE PyObject *__Pyx_GetItemInt_Fast(PyObject *o, Py_ssize_t i,
-                                                     int is_list, int wraparound, int boundscheck);
+/* RaiseUnboundLocalError.proto */
+static void __Pyx_RaiseUnboundLocalError(const char *varname);
 
 /* Import.proto */
 static PyObject *__Pyx_Import(PyObject *name, PyObject *from_list, int level);
@@ -2287,6 +2243,30 @@ static CYTHON_INLINE long __Pyx_PyLong_As_long(PyObject *);
 /* CIntFromPy.proto */
 static CYTHON_INLINE int __Pyx_PyLong_As_int(PyObject *);
 
+/* FastTypeChecks.proto */
+#if CYTHON_COMPILING_IN_CPYTHON
+#define __Pyx_TypeCheck(obj, type) __Pyx_IsSubtype(Py_TYPE(obj), (PyTypeObject *)type)
+#define __Pyx_TypeCheck2(obj, type1, type2) __Pyx_IsAnySubtype2(Py_TYPE(obj), (PyTypeObject *)type1, (PyTypeObject *)type2)
+static CYTHON_INLINE int __Pyx_IsSubtype(PyTypeObject *a, PyTypeObject *b);
+static CYTHON_INLINE int __Pyx_IsAnySubtype2(PyTypeObject *cls, PyTypeObject *a, PyTypeObject *b);
+static CYTHON_INLINE int __Pyx_PyErr_GivenExceptionMatches(PyObject *err, PyObject *type);
+static CYTHON_INLINE int __Pyx_PyErr_GivenExceptionMatches2(PyObject *err, PyObject *type1, PyObject *type2);
+#else
+#define __Pyx_TypeCheck(obj, type) PyObject_TypeCheck(obj, (PyTypeObject *)type)
+#define __Pyx_TypeCheck2(obj, type1, type2) (PyObject_TypeCheck(obj, (PyTypeObject *)type1) || PyObject_TypeCheck(obj, (PyTypeObject *)type2))
+#define __Pyx_PyErr_GivenExceptionMatches(err, type) PyErr_GivenExceptionMatches(err, type)
+static CYTHON_INLINE int __Pyx_PyErr_GivenExceptionMatches2(PyObject *err, PyObject *type1, PyObject *type2) {
+    return PyErr_GivenExceptionMatches(err, type1) || PyErr_GivenExceptionMatches(err, type2);
+}
+#endif
+#define __Pyx_PyErr_ExceptionMatches2(err1, err2)  __Pyx_PyErr_GivenExceptionMatches2(__Pyx_PyErr_CurrentExceptionType(), err1, err2)
+#define __Pyx_PyException_Check(obj) __Pyx_TypeCheck(obj, PyExc_Exception)
+#ifdef PyExceptionInstance_Check
+  #define __Pyx_PyBaseException_Check(obj) PyExceptionInstance_Check(obj)
+#else
+  #define __Pyx_PyBaseException_Check(obj) __Pyx_TypeCheck(obj, PyExc_BaseException)
+#endif
+
 /* GetRuntimeVersion.proto */
 static unsigned long __Pyx_get_runtime_version(void);
 
@@ -2350,50 +2330,44 @@ int __pyx_module_is_main_ChronicleLogger = 0;
 
 /* Implementation of "ChronicleLogger" */
 /* #### Code section: global_var ### */
+static PyObject *__pyx_builtin_open;
 static PyObject *__pyx_builtin_staticmethod;
 static PyObject *__pyx_builtin_NameError;
+static PyObject *__pyx_builtin_ImportError;
 static PyObject *__pyx_builtin_TypeError;
 static PyObject *__pyx_builtin_print;
-static PyObject *__pyx_builtin_open;
-static PyObject *__pyx_builtin_PermissionError;
+static PyObject *__pyx_builtin_OSError;
 static PyObject *__pyx_builtin_IOError;
 static PyObject *__pyx_builtin_ValueError;
 /* #### Code section: string_decls ### */
-static const char __pyx_k_[] = ".";
+static const char __pyx_k_[] = "";
+static const char __pyx_k_0[] = " @{0}";
 static const char __pyx_k_a[] = "a";
 static const char __pyx_k_e[] = "e";
 static const char __pyx_k_f[] = "f";
 static const char __pyx_k_n[] = "-n";
-static const char __pyx_k_v[] = " v";
-static const char __pyx_k__2[] = "";
-static const char __pyx_k__3[] = "\n";
-static const char __pyx_k__4[] = "-";
-static const char __pyx_k__5[] = "~";
-static const char __pyx_k__6[] = ": ";
-static const char __pyx_k__7[] = "/";
-static const char __pyx_k__8[] = " @";
-static const char __pyx_k__9[] = "[";
+static const char __pyx_k__2[] = "\n";
+static const char __pyx_k__3[] = "-";
+static const char __pyx_k__4[] = "~";
+static const char __pyx_k__5[] = ".";
+static const char __pyx_k__6[] = "?";
+static const char __pyx_k_io[] = "io";
 static const char __pyx_k_os[] = "os";
 static const char __pyx_k_re[] = "re";
+static const char __pyx_k_wb[] = "wb";
 static const char __pyx_k_A_Z[] = "(?<!^)(?=[A-Z])";
-static const char __pyx_k__10[] = " [";
-static const char __pyx_k__11[] = "]";
-static const char __pyx_k__12[] = " :] ";
-static const char __pyx_k__13[] = "?";
 static const char __pyx_k_add[] = "add";
 static const char __pyx_k_app[] = "app";
 static const char __pyx_k_doc[] = "__doc__";
 static const char __pyx_k_log[] = "log";
 static const char __pyx_k_now[] = "now";
-static const char __pyx_k_pid[] = "] pid:";
+static const char __pyx_k_pid[] = "pid";
 static const char __pyx_k_pop[] = "pop";
 static const char __pyx_k_sub[] = "sub";
 static const char __pyx_k_sys[] = "sys";
 static const char __pyx_k_tar[] = "tar";
-static const char __pyx_k_var[] = "/var/";
+static const char __pyx_k_A_UU[] = "\200A\360\010\000\t\020\320\017U\320U\\\320\\]\320]^";
 static const char __pyx_k_INFO[] = "INFO";
-static const char __pyx_k_None[] = "None";
-static const char __pyx_k_bool[] = "bool";
 static const char __pyx_k_days[] = "days";
 static const char __pyx_k_exit[] = "__exit__";
 static const char __pyx_k_file[] = "file";
@@ -2418,13 +2392,12 @@ static const char __pyx_k_ERROR[] = "ERROR";
 static const char __pyx_k_FATAL[] = "FATAL";
 static const char __pyx_k_Popen[] = "Popen";
 static const char __pyx_k_Y_m_d[] = "%Y%m%d";
-static const char __pyx_k_app_2[] = ".app/";
+static const char __pyx_k_app_0[] = ".app/{0}";
 static const char __pyx_k_debug[] = "debug";
 static const char __pyx_k_enter[] = "__enter__";
 static const char __pyx_k_level[] = "level";
 static const char __pyx_k_log_2[] = ".log";
 static const char __pyx_k_lower[] = "lower";
-static const char __pyx_k_pid_2[] = "pid";
 static const char __pyx_k_print[] = "print";
 static const char __pyx_k_split[] = "split";
 static const char __pyx_k_stdin[] = "stdin";
@@ -2432,12 +2405,16 @@ static const char __pyx_k_strip[] = "strip";
 static const char __pyx_k_upper[] = "upper";
 static const char __pyx_k_utf_8[] = "utf-8";
 static const char __pyx_k_value[] = "value";
+static const char __pyx_k_var_0[] = "/var/{0}";
 static const char __pyx_k_write[] = "write";
+static const char __pyx_k_A_UU_2[] = "\200A\360\006\000\t\020\320\017U\320U\\\320\\]\320]^";
 static const char __pyx_k_Suroot[] = "_Suroot";
 static const char __pyx_k_ctypes[] = "ctypes";
 static const char __pyx_k_decode[] = "decode";
 static const char __pyx_k_encode[] = "encode";
+static const char __pyx_k_exc_tb[] = "exc_tb";
 static const char __pyx_k_exists[] = "exists";
+static const char __pyx_k_format[] = "format";
 static const char __pyx_k_getenv[] = "getenv";
 static const char __pyx_k_getpid[] = "getpid";
 static const char __pyx_k_header[] = "header";
@@ -2447,17 +2424,19 @@ static const char __pyx_k_module[] = "__module__";
 static const char __pyx_k_name_2[] = "name";
 static const char __pyx_k_python[] = "python";
 static const char __pyx_k_remove[] = "remove";
-static const char __pyx_k_return[] = "return";
 static const char __pyx_k_stderr[] = "stderr";
 static const char __pyx_k_stdout[] = "stdout";
 static const char __pyx_k_tar_gz[] = ".tar.gz";
 static const char __pyx_k_DEVNULL[] = "DEVNULL";
 static const char __pyx_k_IOError[] = "IOError";
+static const char __pyx_k_OSError[] = "OSError";
 static const char __pyx_k_appname[] = "appname";
 static const char __pyx_k_arcname[] = "arcname";
 static const char __pyx_k_baseDir[] = "baseDir";
 static const char __pyx_k_basedir[] = "basedir";
+static const char __pyx_k_devnull[] = "devnull";
 static const char __pyx_k_geteuid[] = "geteuid";
+static const char __pyx_k_io_open[] = "io_open";
 static const char __pyx_k_isDebug[] = "isDebug";
 static const char __pyx_k_is_root[] = "_is_root";
 static const char __pyx_k_listdir[] = "listdir";
@@ -2467,7 +2446,6 @@ static const char __pyx_k_message[] = "message";
 static const char __pyx_k_prepare[] = "__prepare__";
 static const char __pyx_k_tarfile[] = "tarfile";
 static const char __pyx_k_timeout[] = "timeout";
-static const char __pyx_k_var_log[] = "/var/log/";
 static const char __pyx_k_CRITICAL[] = "CRITICAL";
 static const char __pyx_k_Suroot_2[] = "Suroot";
 static const char __pyx_k_c_char_p[] = "c_char_p";
@@ -2476,6 +2454,8 @@ static const char __pyx_k_datetime[] = "datetime";
 static const char __pyx_k_dir_path[] = "dir_path";
 static const char __pyx_k_encoding[] = "encoding";
 static const char __pyx_k_endswith[] = "endswith";
+static const char __pyx_k_exc_info[] = "exc_info";
+static const char __pyx_k_exc_type[] = "exc_type";
 static const char __pyx_k_filename[] = "filename";
 static const char __pyx_k_inPython[] = "inPython";
 static const char __pyx_k_is_debug[] = "__is_debug__";
@@ -2488,6 +2468,7 @@ static const char __pyx_k_qualname[] = "__qualname__";
 static const char __pyx_k_set_name[] = "__set_name__";
 static const char __pyx_k_strftime[] = "strftime";
 static const char __pyx_k_strptime[] = "strptime";
+static const char __pyx_k_0_1_2_log[] = "{0}/{1}-{2}.log";
 static const char __pyx_k_CLASSNAME[] = "CLASSNAME";
 static const char __pyx_k_NameError[] = "NameError";
 static const char __pyx_k_TypeError[] = "TypeError";
@@ -2495,6 +2476,7 @@ static const char __pyx_k_basedir_2[] = "__basedir__";
 static const char __pyx_k_byteToStr[] = "byteToStr";
 static const char __pyx_k_component[] = "component";
 static const char __pyx_k_date_part[] = "date_part";
+static const char __pyx_k_exc_value[] = "exc_value";
 static const char __pyx_k_file_path[] = "file_path";
 static const char __pyx_k_is_python[] = "__is_python__";
 static const char __pyx_k_is_root_2[] = "is_root";
@@ -2504,7 +2486,8 @@ static const char __pyx_k_logname_2[] = "__logname__";
 static const char __pyx_k_metaclass[] = "__metaclass__";
 static const char __pyx_k_strToByte[] = "strToByte";
 static const char __pyx_k_timestamp[] = "timestamp";
-static const char __pyx_k_A_whc_G_EQ[] = "\200A\330%&\360\014\000\t\020\210w\220h\230c\240\023\240G\320+E\300Q";
+static const char __pyx_k_var_log_0[] = "/var/log/{0}";
+static const char __pyx_k_A_whc_T_0J[] = "\200A\360\020\000\t\020\210w\220h\230c\240\024\240T\250\027\3200J\310!";
 static const char __pyx_k_ValueError[] = "ValueError";
 static const char __pyx_k_basestring[] = "basestring";
 static const char __pyx_k_executable[] = "executable";
@@ -2512,11 +2495,12 @@ static const char __pyx_k_expanduser[] = "expanduser";
 static const char __pyx_k_logdir_str[] = "logdir_str";
 static const char __pyx_k_returncode[] = "returncode";
 static const char __pyx_k_subprocess[] = "subprocess";
-static const char __pyx_k_A_1_i_1_V1A[] = "\200A\330\r\021\220\021\220$\320\0261\260\025\260i\270|\3101\330\014\r\210V\2201\220A";
+static const char __pyx_k_ImportError[] = "ImportError";
 static const char __pyx_k_Y_m_d_H_M_S[] = "%Y-%m-%d %H:%M:%S";
 static const char __pyx_k_archive_log[] = "_archive_log";
 static const char __pyx_k_basedir_str[] = "basedir_str";
 static const char __pyx_k_communicate[] = "communicate";
+static const char __pyx_k_dir_decoded[] = "dir_decoded";
 static const char __pyx_k_log_message[] = "log_message";
 static const char __pyx_k_message_str[] = "message_str";
 static const char __pyx_k_set_log_dir[] = "__set_log_dir__";
@@ -2526,8 +2510,12 @@ static const char __pyx_k_archive_path[] = "archive_path";
 static const char __pyx_k_initializing[] = "_initializing";
 static const char __pyx_k_is_coroutine[] = "_is_coroutine";
 static const char __pyx_k_log_rotation[] = "log_rotation";
+static const char __pyx_k_name_decoded[] = "name_decoded";
 static const char __pyx_k_set_base_dir[] = "__set_base_dir__";
 static const char __pyx_k_staticmethod[] = "staticmethod";
+static const char __pyx_k_version_info[] = "version_info";
+static const char __pyx_k_0_pid_1_2_3_4[] = "[{0}] pid:{1} [{2}]{3} :] {4}\n";
+static const char __pyx_k_A_AT_4E_a_V1A[] = "\200A\340\r\024\220A\220T\320\0314\260E\270\031\300,\310a\330\014\r\210V\2201\220A";
 static const char __pyx_k_MAJOR_VERSION[] = "MAJOR_VERSION";
 static const char __pyx_k_MINOR_VERSION[] = "MINOR_VERSION";
 static const char __pyx_k_PATCH_VERSION[] = "PATCH_VERSION";
@@ -2535,76 +2523,75 @@ static const char __pyx_k_a_87_t_1_Q_4q[] = "\320\004\026\220a\330\010\013\2108\
 static const char __pyx_k_class_version[] = "class_version";
 static const char __pyx_k_component_str[] = "component_str";
 static const char __pyx_k_write_to_file[] = "write_to_file";
-static const char __pyx_k_A_7_Cq_r_Cq_wa[] = "\200A\330\025\026\340\010\013\2107\220*\230C\230q\330\014\023\220<\230r\240\030\250\023\250C\250q\330\010\017\210w\220a";
-static const char __pyx_k_A_Qk_q_9_5_1_1[] = "\200A\330\010\t\330\021\025\220Q\220k\240\021\330\020\027\220q\330\020!\240\021\330\014\021\220\021\220\"\320\0249\270\032\3005\310\003\3101\330\014\023\2201";
+static const char __pyx_k_A_7_Cq_r_Cq_wa[] = "\200A\360\006\000\t\014\2107\220*\230C\230q\330\014\023\220<\230r\240\030\250\023\250C\250q\330\010\017\210w\220a";
 static const char __pyx_k_Suroot_is_root[] = "_Suroot.is_root";
 static const char __pyx_k_ChronicleLogger[] = "ChronicleLogger";
-static const char __pyx_k_Error_archiving[] = "Error archiving ";
-static const char __pyx_k_PermissionError[] = "PermissionError";
 static const char __pyx_k_remove_old_logs[] = "remove_old_logs";
-static const char __pyx_k_A_r_WN_1B_IZZaab[] = "\200A\360\006\000\t\020\210r\220\024\220W\230N\250'\3201B\300'\320IZ\320Za\320ab";
 static const char __pyx_k_LOG_ARCHIVE_DAYS[] = "LOG_ARCHIVE_DAYS";
 static const char __pyx_k_LOG_REMOVAL_DAYS[] = "LOG_REMOVAL_DAYS";
 static const char __pyx_k_archive_old_logs[] = "archive_old_logs";
 static const char __pyx_k_get_log_filename[] = "_get_log_filename";
+static const char __pyx_k_new_path_decoded[] = "new_path_decoded";
 static const char __pyx_k_old_logfile_path[] = "__old_logfile_path__";
-static const char __pyx_k_Archived_log_file[] = "Archived log file: ";
-static const char __pyx_k_Created_directory[] = "Created directory: ";
-static const char __pyx_k_INFO_logger_Using[] = " [INFO] @logger :] Using ";
 static const char __pyx_k_can_sudo_nopasswd[] = "_can_sudo_nopasswd";
 static const char __pyx_k_A_4r_gQd_s_b_Q_Q_A[] = "\200A\330\010\013\2104\210r\220\025\220g\230Q\230d\240-\250s\260$\260b\270\010\300\001\300\024\300Q\330\014\r\330\010\014\320\014\035\230Q\330\010\014\320\014\034\230A";
 static const char __pyx_k_asyncio_coroutines[] = "asyncio.coroutines";
 static const char __pyx_k_cline_in_traceback[] = "cline_in_traceback";
+static const char __pyx_k_Archived_log_file_0[] = "Archived log file: {0}";
+static const char __pyx_k_Created_directory_0[] = "Created directory: {0}";
+static const char __pyx_k_Error_archiving_0_1[] = "Error archiving {0}: {1}";
 static const char __pyx_k_A_4wavQ_3fCs_3fCs_t1[] = "\200A\330\010\013\2104\210w\220a\220v\230Q\330\014\020\220\001\330\020\022\220'\230\021\230)\2403\240f\250C\250s\260'\270\021\330\020\022\220'\230\021\230)\2403\240f\250C\250s\260!\340\010\017\210t\2201";
-static const char __pyx_k_Error_during_archive[] = "Error during archive: ";
-static const char __pyx_k_Error_during_removal[] = "Error during removal: ";
 static const char __pyx_k_Suroot_class_version[] = "_Suroot.class_version";
 static const char __pyx_k_current_logfile_path[] = "__current_logfile_path__";
 static const char __pyx_k_has_write_permission[] = "_has_write_permission";
-static const char __pyx_k_A_r__N_ARRaar_s_B_B_C[] = "\200A\340\010\017\210r\220\024\220_\240N\260/\320AR\320Ra\320ar\360\000\000s\001B\002\360\000\000B\002C\002";
 static const char __pyx_k_ChronicleLogger___init[] = "ChronicleLogger.__init__";
 static const char __pyx_k_ChronicleLogger_logDir[] = "ChronicleLogger.logDir";
-static const char __pyx_k_A_84r_1_2T_4_7_q_vYaxwc[] = "\200A\330\010\023\2208\2304\230r\240\031\250!\2501\330\010\023\2202\220T\230\024\230^\2504\250|\2707\300%\300q\330\010\017\210v\220Y\230a\230x\240w\250c\260\021";
+static const char __pyx_k_Error_during_archive_0[] = "Error during archive: {0}";
+static const char __pyx_k_Error_during_removal_0[] = "Error during removal: {0}";
+static const char __pyx_k_A_QgQ_5_q_3e3j_1_iq_avQ[] = "\200A\330\010\013\210:\220Q\220g\230Q\330\014\023\2205\230\007\230q\240\001\330\r\023\2203\220e\2303\230j\250\001\250\027\260\001\330\014\023\2201\340\010\016\210i\220q\320\030:\270'\300\021\300$\300a\300v\310Q";
 static const char __pyx_k_ChronicleLogger_baseDir[] = "ChronicleLogger.baseDir";
 static const char __pyx_k_ChronicleLogger_isDebug[] = "ChronicleLogger.isDebug";
 static const char __pyx_k_ChronicleLogger_logName[] = "ChronicleLogger.logName";
 static const char __pyx_k_ensure_directory_exists[] = "ensure_directory_exists";
 static const char __pyx_k_should_use_system_paths[] = "should_use_system_paths";
 static const char __pyx_k_src_ChronicleLogger_pyx[] = "src/ChronicleLogger.pyx";
-static const char __pyx_k_A_QgQ_5_q_3e3j_1_iq_4q_a[] = "\200A\330\010\013\210:\220Q\220g\230Q\330\014\023\2205\230\007\230q\330\r\023\2203\220e\2303\230j\250\001\250\027\260\001\330\014\023\2201\330\010\016\210i\220q\230\002\320\032;\2704\270q\300\006\300a";
 static const char __pyx_k_ChronicleLogger_inPython[] = "ChronicleLogger.inPython";
 static const char __pyx_k_ChronicleLogger_byteToStr[] = "ChronicleLogger.byteToStr";
 static const char __pyx_k_ChronicleLogger_strToByte[] = "ChronicleLogger.strToByte";
 static const char __pyx_k_can_sudo_without_password[] = "can_sudo_without_password";
-static const char __pyx_k_Failed_to_create_directory[] = "Failed to create directory ";
+static const char __pyx_k_0_pid_1_INFO_logger_Using_2[] = "[{0}] pid:{1} [INFO] @logger :] Using {2}\n";
+static const char __pyx_k_A_6_E_Jawa_1_q_q_5_q_iq_avQ[] = "\200A\330\010\013\2106\220\023\220E\230\023\230J\240a\240w\250a\330\014\023\2201\330\r\027\220q\230\007\230q\330\014\023\2205\230\007\230q\240\001\340\010\016\210i\220q\320\030:\270'\300\021\300$\300a\300v\310Q";
 static const char __pyx_k_ChronicleLogger_log_message[] = "ChronicleLogger.log_message";
-static const char __pyx_k_Expected_str_bytes_None_got[] = "Expected str/bytes/None, got ";
-static const char __pyx_k_A_6_E_Jawa_1_q_q_5_q_iq_4q_a[] = "\200A\330\010\013\2106\220\023\220E\230\023\230J\240a\240w\250a\330\014\023\2201\330\r\027\220q\230\007\230q\330\014\023\2205\230\007\230q\330\010\016\210i\220q\230\002\320\032;\2704\270q\300\006\300a";
-static const char __pyx_k_A_9D_Be7_1_1A_Qb_q_L_B_bPVVW[] = "\200A\330\010\013\2109\220D\230\004\230B\230e\2407\250!\2501\330\014\r\330\020\022\220)\2301\230A\330\020\025\220Q\220b\320\030/\250q\330\014\023\220=\240\001\330\020\024\220L\240\001\240\022\320#B\300,\310b\320PV\320VW";
 static const char __pyx_k_ChronicleLogger__archive_log[] = "ChronicleLogger._archive_log";
 static const char __pyx_k_ChronicleLogger_log_rotation[] = "ChronicleLogger.log_rotation";
+static const char __pyx_k_A_iq_s_q_2Q_Yc_A_Yc_A_A_B_TXX[] = "\200A\340\010\t\330\014\016\210i\220q\230\001\330\014\021\220\021\320\022*\250'\260\021\260!\330\017\020\340\014\017\210s\220-\230q\240\003\2402\240Q\330\020\032\230+\240Y\250c\260\031\270!\330\020\024\220A\340\020\032\230+\240Y\250c\260\031\270!\330\020\024\220A\330\014\020\220\014\230A\320\035B\300'\310\021\310*\320TX\320X^\320^_";
 static const char __pyx_k_ChronicleLogger___set_log_dir[] = "ChronicleLogger.__set_log_dir__";
 static const char __pyx_k_ChronicleLogger_class_version[] = "ChronicleLogger.class_version";
 static const char __pyx_k_ChronicleLogger_write_to_file[] = "ChronicleLogger.write_to_file";
+static const char __pyx_k_Expected_str_bytes_None_got_0[] = "Expected str/bytes/None, got {0}";
 static const char __pyx_k_ChronicleLogger___set_base_dir[] = "ChronicleLogger.__set_base_dir__";
+static const char __pyx_k_Failed_to_create_directory_0_1[] = "Failed to create directory {0}: {1}";
 static const char __pyx_k_Suroot_should_use_system_paths[] = "_Suroot.should_use_system_paths";
-static const char __pyx_k_q_d_AQ_4q_d_gQ_w_a_r_r_k_r_e1F[] = "\320\004\037\230q\330\010\026\220d\230*\240A\240Q\330\010\013\2104\210q\330\014\026\220d\230,\240g\250Q\330\014\017\210w\320\026.\250a\330\020\027\220r\230\031\240!\340\020\027\220r\230\025\230k\250\021\250!\330\020\027\220r\230\025\230e\2401\240F\250\"\250I\260Q\330\014\020\220\017\230q\340\014\020\220\017\230q";
-static const char __pyx_k_1_O1_O1_N_F_1A_Q_4xs_e1_HAQ_1_q[] = "\320\004\027\320\027'\240|\2601\330\010\014\210O\2301\330\010\014\210O\2301\330\010\014\210N\230!\330\010\014\320\014$\240F\250)\2601\260A\330\010\014\320\014\035\230Q\340\010\013\2104\210x\220s\230(\240$\240e\2501\330\014\r\340\010\014\210H\220A\220Q\330\010\013\2101\330\014\020\220\007\220q\230\001\340\014\020\220\007\220q\230\001\330\010\014\210H\220A\220[\240\r\250Q\340\010\014\320\014(\250\004\320,>\270a\330\010\014\320\014$\240A\240T\250\021\340\010\013\2104\320\017%\240Q\240d\250!\330\014\020\220\016\230a\230q";
-static const char __pyx_k_A_2U_q_M_y_QnKq_4q_gQa_1_A_Be3a[] = "\200A\330\010\023\2202\220U\230%\230q\240\004\240M\260\021\330\010\027\220y\240\002\240!\330\010\t\330\021\030\230\005\230Q\230n\250K\260q\330\020\023\2204\220q\230\n\240(\250!\330\014\016\210g\220Q\220a\330\014\021\220\021\220\"\320\024+\2501\330\010\017\210}\230A\330\014\021\220\021\220\"\320\024(\250\014\260B\260e\2703\270a";
-static const char __pyx_k_A_7_gQ_7_7_1_5_q_a_q_q_AXQ_A_wa[] = "\200A\330'(\340\010\013\2107\320\022&\240g\250Q\330\014\023\2207\230!\340\010\013\2107\220(\230!\330\014\023\320\023)\250\021\330\014\023\2201\340\010\t\330\014\023\2205\230\001\330\020\021\220\030\230\026\230q\330\020\026\220a\330\020\027\220q\330\020\027\220q\340\014\020\220\014\230A\230X\240Q\330\014\023\320\023)\250\024\250\\\270\023\270A\330\017\020\330\014\023\320\023)\250\021\340\010\017\210w\220a";
+static const char __pyx_k_b_q_HD_1A_wat_Qo_TU_d_AQ_D_6_q[] = "\320\004#\240?\260!\330\010\016\210b\220\007\220q\330\010\024\220H\230D\240\002\240)\2501\250A\340\010\030\230\007\230w\240a\240t\250:\260Q\260o\300_\320TU\330\010\026\220d\230*\240A\240Q\330\010\024\220D\230\n\240!\2406\250\026\250q\360\006\000\t\025\320\0245\260W\270A\270[\310\005\310[\320Xg\320gh\340\010\023\2204\320\027)\250\021\340\010\013\2104\320\017%\240S\250\001\330\014\020\220\r\230Q\330\014\020\320\020(\250\001\330\014\017\210t\2208\2301\340\020#\2408\2507\260!\260<\270z\310\021\310*\320T`\320`a\330\020\031\320\031F\300g\310Q\310k\320Y^\320^_\330\020\034\230G\2402\240Q\340\010\013\2104\320\017%\240Q\240a\330\014\017\210z\230\024\230Y\240l\260!\330\020\025\220Q\220i\230v\240T\250\025\250c\260\021\340\020\025\220Q\220i\230v\240Q\330\014\020\220\016\230a\230q";
+static const char __pyx_k_0_CLASSNAME_v_0_MAJOR_VERSION_0[] = "{0.CLASSNAME} v{0.MAJOR_VERSION}.{0.MINOR_VERSION}.{0.PATCH_VERSION}";
+static const char __pyx_k_1_O1_O1_N_F_1A_Q_4xs_e1_HAQ_1_q[] = "\320\004\027\320\027'\240|\2601\330\010\014\210O\2301\330\010\014\210O\2301\330\010\014\210N\230!\330\010\014\320\014$\240F\250)\2601\260A\330\010\014\320\014\035\230Q\340\010\013\2104\210x\220s\230(\240$\240e\2501\330\014\r\340\010\014\210H\220A\220Q\330\010\013\2101\330\014\020\220\007\220q\230\001\340\014\020\220\007\220q\230\001\360\010\000\t\r\210H\220A\220[\240\r\250Q\340\010\014\320\014(\250\004\320,>\270a\330\010\014\320\014$\240A\240T\250\021\340\010\013\2104\320\017%\240Q\240d\250!\330\014\020\220\016\230a\230q";
+static const char __pyx_k_A_2U_q_M_y_QnKq_4q_gQa_k_Ya_Q_q[] = "\200A\330\010\023\2202\220U\230%\230q\240\004\240M\260\021\330\010\027\220y\240\002\240!\330\010\t\330\021\030\230\005\230Q\230n\250K\260q\330\020\023\2204\220q\230\n\240(\250!\330\014\016\210g\220Q\220a\340\014\021\220\021\320\022*\250'\260\021\260!\330\017\020\340\014\026\220k\240\031\250#\250Y\260a\330\014\020\220\001\340\010\r\210Q\320\016(\250\007\250q\260\n\270$\270e\3003\300a";
+static const char __pyx_k_A_7_gQ_7_7_1_5_q_a_q_q_s_q_3b_C[] = "\200A\360\006\000\t\014\2107\320\022&\240g\250Q\330\014\023\2207\230!\340\010\013\2107\220(\230!\330\014\023\320\023)\250\021\330\014\023\2201\340\010\t\330\014\023\2205\230\001\330\020\021\220\030\230\026\230q\330\020\026\220a\330\020\027\220q\330\020\027\220q\360\006\000\r\020\210s\220-\230q\240\003\2403\240b\250\004\250C\250}\270A\270S\300\003\3001\330\020\024\220L\240\001\240\030\250\021\340\020\024\220L\240\001\330\014\023\320\023)\250\024\250\\\270\023\270A\330\017\020\330\014\023\320\023)\250\021\340\010\017\210w\220a";
 static const char __pyx_k_ChronicleLogger_remove_old_logs[] = "ChronicleLogger.remove_old_logs";
 static const char __pyx_k_Suroot_can_sudo_without_passwor[] = "_Suroot.can_sudo_without_password";
 static const char __pyx_k_Tiny_zero_dependency_non_intera[] = "\n    Tiny, zero-dependency, non-interactive privilege detector.\n    Used by ChronicleLogger to decide log directory (/var/log vs ~/.app).\n    NEVER prompts, NEVER prints, safe in CI/CD and tests.\n    ";
-static const char __pyx_k_a_87_t_Qa_t9A_t_wa_r_Q_2_uF_O4w[] = "\320\004\026\220a\330\010\013\2108\2207\230!\330\014\020\220\017\230t\240:\250Q\250a\330\014\017\210t\2209\230A\330\020\027\220t\230<\240w\250a\330\020\027\220r\230\024\230Q\320\0362\260%\260u\270F\300!\330\020\024\220O\2404\240w\250a\340\014\023\2204\220|\2407\250!";
-static const char __pyx_k_a_T_1A_1_a_d_gQ_w_a_N_M_r_k_N_E[] = "\320\004\036\230a\330\010\025\220T\230\032\2401\240A\330\010\013\2101\330\014\020\220\016\230a\340\014\026\220d\230,\240g\250Q\330\014\017\210w\320\026.\250a\330\020\024\220N\240\"\240M\260\021\340\020\027\220r\230\025\230k\250\021\250!\330\020\024\220N\240\"\240E\250\025\250a\250v\260R\260y\300\010\310\001";
-static const char __pyx_k_b_q_HD_1A_Ja_O1_d_AQ_D_6_q_Be_G[] = "\320\004#\240?\260!\330\010\016\210b\220\007\220q\330\010\024\220H\230D\240\002\240)\2501\250A\340\010\030\230\002\230&\240\004\240J\250a\250}\270O\3101\330\010\026\220d\230*\240A\240Q\330\010\024\220D\230\n\240!\2406\250\026\250q\340\010\024\220B\220e\320\033,\250G\260<\320?R\320RS\340\010\023\2204\320\027)\250\021\340\010\013\2104\320\017%\240S\250\001\330\014\020\220\r\230Q\330\014\020\320\020(\250\001\330\014\017\210t\2208\2301\330\020\031\230\022\2305\320 1\3201O\310x\320W^\320^_\330\020\034\230G\2402\240Q\340\010\013\2104\320\017%\240Q\240a\330\014\017\210z\230\024\230Y\240l\260!\330\020\025\220Q\220i\230v\240T\250\025\250c\260\021\340\020\025\220Q\220i\230v\240Q\330\014\020\220\016\230a\230q";
-static const char __pyx_k_A_4q_4y_F_4r_6_aq_89A_HD_2YfBd_Q[] = "\200A\330\010\t\330\014\020\220\010\230\002\230(\240!\2404\240q\330\020\023\2204\220y\240\001\240\021\330\024 \240\004\240F\250!\2504\250r\260\022\2606\270\021\270$\270a\270q\330\024\025\330\030#\2408\2509\260A\260[\300\001\330\030\034\230H\240D\250\003\2502\250Y\260f\270B\270d\300!\330\034 \240\r\250Q\250a\330\033\034\330\030\031\330\010\017\210}\230A\330\014\021\220\021\220\"\320\024.\250b\260\005\260S\270\001";
-static const char __pyx_k_A_4q_4y_F_4r_6_aq_89A_HD_2YfBd_g[] = "\200A\330\010\t\330\014\020\220\010\230\002\230(\240!\2404\240q\330\020\023\2204\220y\240\001\240\021\330\024 \240\004\240F\250!\2504\250r\260\022\2606\270\021\270$\270a\270q\330\024\025\330\030#\2408\2509\260A\260[\300\001\330\030\034\230H\240D\250\003\2502\250Y\260f\270B\270d\300!\330\034\036\230g\240Q\240b\250\005\250U\260!\2604\260}\300A\330\033\034\330\030\031\330\010\017\210}\230A\330\014\021\220\021\220\"\320\024.\250b\260\005\260S\270\001";
+static const char __pyx_k_a_87_t_Qa_t9A_t_waq_r_Q_2_uF_O4[] = "\320\004\026\220a\330\010\013\2108\2207\230!\330\014\020\220\017\230t\240:\250Q\250a\330\014\017\210t\2209\230A\330\020\027\220t\230<\240w\250a\250q\330\020\027\220r\230\024\230Q\320\0362\260%\260u\270F\300!\330\020\024\220O\2404\240w\250a\250q\340\014\023\2204\220|\2407\250!\2501";
+static const char __pyx_k_a_T_1A_d_Ba_a_d_gQa_w_a_N_q_r_k[] = "\320\004\036\230a\330\010\025\220T\230\032\2401\240A\330\010\013\210;\220d\230*\240B\240a\330\014\020\220\016\230a\340\014\026\220d\230,\240g\250Q\250a\330\014\017\210w\320\026.\250a\340\020\024\220N\240.\260\007\260q\270\001\340\020\027\220r\230\025\230k\250\021\250!\340\020\024\220N\240\"\240E\250\025\250a\250v\260Z\270w\300a\300z\320QR";
+static const char __pyx_k_q_d_AQ_4_3k_1_d_gQa_w_a_z_r_k_r[] = "\320\004\037\230q\330\010\026\220d\230*\240A\240Q\330\010\013\2104\210|\2303\230k\250\022\2501\330\014\026\220d\230,\240g\250Q\250a\330\014\017\210w\320\026.\250a\340\020\027\220z\240\027\250\001\250\021\340\020\027\220r\230\025\230k\250\021\250!\340\020\027\220r\230\025\230e\2401\240F\250*\260G\2701\270A\330\014\020\220\017\230q\340\014\020\220\017\230q";
+static const char __pyx_k_A_4q_4y_F_4r_6_aq_89A_HD_2YfBd_Q[] = "\200A\330\010\t\330\014\020\220\010\230\002\230(\240!\2404\240q\330\020\023\2204\220y\240\001\240\021\330\024 \240\004\240F\250!\2504\250r\260\022\2606\270\021\270$\270a\270q\330\024\025\330\030#\2408\2509\260A\260[\300\001\330\030\034\230H\240D\250\003\2502\250Y\260f\270B\270d\300!\330\034 \240\r\250Q\250a\330\033\034\330\030\031\330\017\020\340\014\026\220k\240\031\250#\250Y\260a\330\014\020\220\001\340\014\021\220\021\320\022-\250W\260A\260T\270\025\270c\300\021";
+static const char __pyx_k_A_4q_4y_F_4r_6_aq_89A_HD_2YfBd_g[] = "\200A\330\010\t\330\014\020\220\010\230\002\230(\240!\2404\240q\330\020\023\2204\220y\240\001\240\021\330\024 \240\004\240F\250!\2504\250r\260\022\2606\270\021\270$\270a\270q\330\024\025\330\030#\2408\2509\260A\260[\300\001\330\030\034\230H\240D\250\003\2502\250Y\260f\270B\270d\300!\330\034\036\230g\240Q\240b\250\005\250U\260!\2604\260}\300A\330\033\034\330\030\031\330\017\020\340\014\026\220k\240\031\250#\250Y\260a\330\014\020\220\001\340\014\021\220\021\320\022-\250W\260A\260T\270\025\270c\300\021";
+static const char __pyx_k_A_84r_1_d_WA_1D_Uaaeef_t_waq_G1M[] = "\200A\330\010\023\2208\2304\230r\240\031\250!\2501\340\010\026\220d\230+\240W\250A\250\\\270\032\3001\300D\310\r\320Ua\320ae\320ef\330\010\027\220t\230<\240w\250a\250q\330\010\023\320\023$\240G\2501\250M\270\036\300q\330\010\017\210v\220Y\230a\230x\240w\250a\250y\270\001";
+static const char __pyx_k_A_Qk_q_s_q_2Q_Yc_Qk_q_TYY_1_Yc_Q[] = "\200A\340\010\t\330\021\025\220Q\220k\240\021\330\020\027\220q\360\006\000\r\020\210s\220-\230q\240\003\2402\240Q\330\020\032\230+\240Y\250c\260\031\270!\330\020\023\220:\230Q\230k\250\031\260!\330\024\030\230\001\330\024\031\230\021\320\032@\300\007\300q\310\014\320TY\320Y\\\320\\]\330\024\033\2301\340\020\032\230+\240Y\250c\260\031\270!\330\020\023\220:\230Q\230k\250\031\260!\330\024\030\230\001\330\024\031\230\021\320\032@\300\007\300q\310\014\320TY\320Y\\\320\\]\330\024\033\2301";
 static const char __pyx_k_ChronicleLogger__get_log_filenam[] = "ChronicleLogger._get_log_filename";
 static const char __pyx_k_ChronicleLogger__has_write_permi[] = "ChronicleLogger._has_write_permission";
 static const char __pyx_k_ChronicleLogger_archive_old_logs[] = "ChronicleLogger.archive_old_logs";
 static const char __pyx_k_ChronicleLogger_ensure_directory[] = "ChronicleLogger.ensure_directory_exists";
-static const char __pyx_k_Permission_denied_for_writing_to[] = "Permission denied for writing to ";
+static const char __pyx_k_Permission_denied_for_writing_to[] = "Permission denied for writing to {0}";
 /* #### Code section: decls ### */
 static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_class_version(CYTHON_UNUSED PyObject *__pyx_self); /* proto */
 static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_2is_root(CYTHON_UNUSED PyObject *__pyx_self); /* proto */
@@ -2670,11 +2657,12 @@ typedef struct {
   #endif
   __Pyx_CachedCFunction __pyx_umethod_PyDict_Type_pop;
   __Pyx_CachedCFunction __pyx_umethod_PyUnicode_Type__strip;
-  PyObject *__pyx_tuple[7];
+  PyObject *__pyx_tuple[9];
   PyObject *__pyx_codeobj_tab[24];
-  PyObject *__pyx_string_tab[223];
+  PyObject *__pyx_string_tab[229];
   PyObject *__pyx_int_0;
   PyObject *__pyx_int_1;
+  PyObject *__pyx_int_3;
   PyObject *__pyx_int_5;
   PyObject *__pyx_int_7;
   PyObject *__pyx_int_30;
@@ -2715,229 +2703,235 @@ static __pyx_mstatetype __pyx_mstate_global_static =
 static __pyx_mstatetype * const __pyx_mstate_global = &__pyx_mstate_global_static;
 #endif
 /* #### Code section: constant_name_defines ### */
-#define __pyx_kp_u_ __pyx_string_tab[0]
-#define __pyx_kp_u_A_Z __pyx_string_tab[1]
-#define __pyx_kp_u_Archived_log_file __pyx_string_tab[2]
-#define __pyx_n_u_CLASSNAME __pyx_string_tab[3]
-#define __pyx_n_u_CRITICAL __pyx_string_tab[4]
-#define __pyx_n_u_ChronicleLogger __pyx_string_tab[5]
-#define __pyx_n_u_ChronicleLogger___init __pyx_string_tab[6]
-#define __pyx_n_u_ChronicleLogger___set_base_dir __pyx_string_tab[7]
-#define __pyx_n_u_ChronicleLogger___set_log_dir __pyx_string_tab[8]
-#define __pyx_n_u_ChronicleLogger__archive_log __pyx_string_tab[9]
-#define __pyx_n_u_ChronicleLogger__get_log_filenam __pyx_string_tab[10]
-#define __pyx_n_u_ChronicleLogger__has_write_permi __pyx_string_tab[11]
-#define __pyx_n_u_ChronicleLogger_archive_old_logs __pyx_string_tab[12]
-#define __pyx_n_u_ChronicleLogger_baseDir __pyx_string_tab[13]
-#define __pyx_n_u_ChronicleLogger_byteToStr __pyx_string_tab[14]
-#define __pyx_n_u_ChronicleLogger_class_version __pyx_string_tab[15]
-#define __pyx_n_u_ChronicleLogger_ensure_directory __pyx_string_tab[16]
-#define __pyx_n_u_ChronicleLogger_inPython __pyx_string_tab[17]
-#define __pyx_n_u_ChronicleLogger_isDebug __pyx_string_tab[18]
-#define __pyx_n_u_ChronicleLogger_logDir __pyx_string_tab[19]
-#define __pyx_n_u_ChronicleLogger_logName __pyx_string_tab[20]
-#define __pyx_n_u_ChronicleLogger_log_message __pyx_string_tab[21]
-#define __pyx_n_u_ChronicleLogger_log_rotation __pyx_string_tab[22]
-#define __pyx_n_u_ChronicleLogger_remove_old_logs __pyx_string_tab[23]
-#define __pyx_n_u_ChronicleLogger_strToByte __pyx_string_tab[24]
-#define __pyx_n_u_ChronicleLogger_write_to_file __pyx_string_tab[25]
-#define __pyx_kp_u_Created_directory __pyx_string_tab[26]
-#define __pyx_n_u_DEBUG __pyx_string_tab[27]
-#define __pyx_n_u_DEVNULL __pyx_string_tab[28]
-#define __pyx_n_u_ERROR __pyx_string_tab[29]
-#define __pyx_kp_u_Error_archiving __pyx_string_tab[30]
-#define __pyx_kp_u_Error_during_archive __pyx_string_tab[31]
-#define __pyx_kp_u_Error_during_removal __pyx_string_tab[32]
-#define __pyx_kp_u_Expected_str_bytes_None_got __pyx_string_tab[33]
-#define __pyx_n_u_FATAL __pyx_string_tab[34]
-#define __pyx_kp_u_Failed_to_create_directory __pyx_string_tab[35]
-#define __pyx_n_b_INFO __pyx_string_tab[36]
-#define __pyx_kp_u_INFO_logger_Using __pyx_string_tab[37]
-#define __pyx_n_u_IOError __pyx_string_tab[38]
-#define __pyx_n_u_LOG_ARCHIVE_DAYS __pyx_string_tab[39]
-#define __pyx_n_u_LOG_REMOVAL_DAYS __pyx_string_tab[40]
-#define __pyx_n_u_MAJOR_VERSION __pyx_string_tab[41]
-#define __pyx_n_u_MINOR_VERSION __pyx_string_tab[42]
-#define __pyx_n_u_NameError __pyx_string_tab[43]
-#define __pyx_kp_u_None __pyx_string_tab[44]
-#define __pyx_n_u_PATCH_VERSION __pyx_string_tab[45]
-#define __pyx_n_u_PermissionError __pyx_string_tab[46]
-#define __pyx_kp_u_Permission_denied_for_writing_to __pyx_string_tab[47]
-#define __pyx_n_u_Popen __pyx_string_tab[48]
-#define __pyx_n_u_Suroot __pyx_string_tab[49]
-#define __pyx_n_u_Suroot_2 __pyx_string_tab[50]
-#define __pyx_n_u_Suroot_can_sudo_without_passwor __pyx_string_tab[51]
-#define __pyx_n_u_Suroot_class_version __pyx_string_tab[52]
-#define __pyx_n_u_Suroot_is_root __pyx_string_tab[53]
-#define __pyx_n_u_Suroot_should_use_system_paths __pyx_string_tab[54]
-#define __pyx_kp_u_Tiny_zero_dependency_non_intera __pyx_string_tab[55]
-#define __pyx_n_u_TypeError __pyx_string_tab[56]
-#define __pyx_n_u_ValueError __pyx_string_tab[57]
-#define __pyx_kp_u_Y_m_d __pyx_string_tab[58]
-#define __pyx_kp_u_Y_m_d_H_M_S __pyx_string_tab[59]
-#define __pyx_kp_u__10 __pyx_string_tab[60]
-#define __pyx_kp_u__11 __pyx_string_tab[61]
-#define __pyx_kp_u__12 __pyx_string_tab[62]
-#define __pyx_kp_u__13 __pyx_string_tab[63]
-#define __pyx_kp_b__2 __pyx_string_tab[64]
+#define __pyx_kp_b_ __pyx_string_tab[0]
+#define __pyx_kp_u_ __pyx_string_tab[1]
+#define __pyx_kp_u_0 __pyx_string_tab[2]
+#define __pyx_kp_u_0_1_2_log __pyx_string_tab[3]
+#define __pyx_kp_u_0_CLASSNAME_v_0_MAJOR_VERSION_0 __pyx_string_tab[4]
+#define __pyx_kp_u_0_pid_1_2_3_4 __pyx_string_tab[5]
+#define __pyx_kp_u_0_pid_1_INFO_logger_Using_2 __pyx_string_tab[6]
+#define __pyx_kp_u_A_Z __pyx_string_tab[7]
+#define __pyx_kp_u_Archived_log_file_0 __pyx_string_tab[8]
+#define __pyx_n_u_CLASSNAME __pyx_string_tab[9]
+#define __pyx_n_u_CRITICAL __pyx_string_tab[10]
+#define __pyx_n_u_ChronicleLogger __pyx_string_tab[11]
+#define __pyx_n_u_ChronicleLogger___init __pyx_string_tab[12]
+#define __pyx_n_u_ChronicleLogger___set_base_dir __pyx_string_tab[13]
+#define __pyx_n_u_ChronicleLogger___set_log_dir __pyx_string_tab[14]
+#define __pyx_n_u_ChronicleLogger__archive_log __pyx_string_tab[15]
+#define __pyx_n_u_ChronicleLogger__get_log_filenam __pyx_string_tab[16]
+#define __pyx_n_u_ChronicleLogger__has_write_permi __pyx_string_tab[17]
+#define __pyx_n_u_ChronicleLogger_archive_old_logs __pyx_string_tab[18]
+#define __pyx_n_u_ChronicleLogger_baseDir __pyx_string_tab[19]
+#define __pyx_n_u_ChronicleLogger_byteToStr __pyx_string_tab[20]
+#define __pyx_n_u_ChronicleLogger_class_version __pyx_string_tab[21]
+#define __pyx_n_u_ChronicleLogger_ensure_directory __pyx_string_tab[22]
+#define __pyx_n_u_ChronicleLogger_inPython __pyx_string_tab[23]
+#define __pyx_n_u_ChronicleLogger_isDebug __pyx_string_tab[24]
+#define __pyx_n_u_ChronicleLogger_logDir __pyx_string_tab[25]
+#define __pyx_n_u_ChronicleLogger_logName __pyx_string_tab[26]
+#define __pyx_n_u_ChronicleLogger_log_message __pyx_string_tab[27]
+#define __pyx_n_u_ChronicleLogger_log_rotation __pyx_string_tab[28]
+#define __pyx_n_u_ChronicleLogger_remove_old_logs __pyx_string_tab[29]
+#define __pyx_n_u_ChronicleLogger_strToByte __pyx_string_tab[30]
+#define __pyx_n_u_ChronicleLogger_write_to_file __pyx_string_tab[31]
+#define __pyx_kp_u_Created_directory_0 __pyx_string_tab[32]
+#define __pyx_n_u_DEBUG __pyx_string_tab[33]
+#define __pyx_n_u_DEVNULL __pyx_string_tab[34]
+#define __pyx_n_u_ERROR __pyx_string_tab[35]
+#define __pyx_kp_u_Error_archiving_0_1 __pyx_string_tab[36]
+#define __pyx_kp_u_Error_during_archive_0 __pyx_string_tab[37]
+#define __pyx_kp_u_Error_during_removal_0 __pyx_string_tab[38]
+#define __pyx_kp_u_Expected_str_bytes_None_got_0 __pyx_string_tab[39]
+#define __pyx_n_u_FATAL __pyx_string_tab[40]
+#define __pyx_kp_u_Failed_to_create_directory_0_1 __pyx_string_tab[41]
+#define __pyx_n_b_INFO __pyx_string_tab[42]
+#define __pyx_n_u_IOError __pyx_string_tab[43]
+#define __pyx_n_u_ImportError __pyx_string_tab[44]
+#define __pyx_n_u_LOG_ARCHIVE_DAYS __pyx_string_tab[45]
+#define __pyx_n_u_LOG_REMOVAL_DAYS __pyx_string_tab[46]
+#define __pyx_n_u_MAJOR_VERSION __pyx_string_tab[47]
+#define __pyx_n_u_MINOR_VERSION __pyx_string_tab[48]
+#define __pyx_n_u_NameError __pyx_string_tab[49]
+#define __pyx_n_u_OSError __pyx_string_tab[50]
+#define __pyx_n_u_PATCH_VERSION __pyx_string_tab[51]
+#define __pyx_kp_u_Permission_denied_for_writing_to __pyx_string_tab[52]
+#define __pyx_n_u_Popen __pyx_string_tab[53]
+#define __pyx_n_u_Suroot __pyx_string_tab[54]
+#define __pyx_n_u_Suroot_2 __pyx_string_tab[55]
+#define __pyx_n_u_Suroot_can_sudo_without_passwor __pyx_string_tab[56]
+#define __pyx_n_u_Suroot_class_version __pyx_string_tab[57]
+#define __pyx_n_u_Suroot_is_root __pyx_string_tab[58]
+#define __pyx_n_u_Suroot_should_use_system_paths __pyx_string_tab[59]
+#define __pyx_kp_u_Tiny_zero_dependency_non_intera __pyx_string_tab[60]
+#define __pyx_n_u_TypeError __pyx_string_tab[61]
+#define __pyx_n_u_ValueError __pyx_string_tab[62]
+#define __pyx_kp_u_Y_m_d __pyx_string_tab[63]
+#define __pyx_kp_u_Y_m_d_H_M_S __pyx_string_tab[64]
 #define __pyx_kp_u__2 __pyx_string_tab[65]
 #define __pyx_kp_u__3 __pyx_string_tab[66]
 #define __pyx_kp_u__4 __pyx_string_tab[67]
 #define __pyx_kp_u__5 __pyx_string_tab[68]
 #define __pyx_kp_u__6 __pyx_string_tab[69]
-#define __pyx_kp_u__7 __pyx_string_tab[70]
-#define __pyx_kp_u__8 __pyx_string_tab[71]
-#define __pyx_kp_u__9 __pyx_string_tab[72]
-#define __pyx_n_u_a __pyx_string_tab[73]
-#define __pyx_n_u_add __pyx_string_tab[74]
-#define __pyx_n_b_app __pyx_string_tab[75]
-#define __pyx_kp_u_app_2 __pyx_string_tab[76]
-#define __pyx_n_u_appname __pyx_string_tab[77]
-#define __pyx_n_u_archive_log __pyx_string_tab[78]
-#define __pyx_n_u_archive_old_logs __pyx_string_tab[79]
-#define __pyx_n_u_archive_path __pyx_string_tab[80]
-#define __pyx_n_u_arcname __pyx_string_tab[81]
-#define __pyx_n_u_asyncio_coroutines __pyx_string_tab[82]
-#define __pyx_n_u_baseDir __pyx_string_tab[83]
-#define __pyx_n_u_basedir __pyx_string_tab[84]
-#define __pyx_n_u_basedir_2 __pyx_string_tab[85]
-#define __pyx_n_u_basedir_str __pyx_string_tab[86]
-#define __pyx_n_u_basestring __pyx_string_tab[87]
-#define __pyx_n_u_bool __pyx_string_tab[88]
-#define __pyx_n_u_byteToStr __pyx_string_tab[89]
-#define __pyx_n_u_c_char_p __pyx_string_tab[90]
-#define __pyx_n_u_can_sudo_nopasswd __pyx_string_tab[91]
-#define __pyx_n_u_can_sudo_without_password __pyx_string_tab[92]
-#define __pyx_n_u_class_version __pyx_string_tab[93]
-#define __pyx_n_u_cline_in_traceback __pyx_string_tab[94]
-#define __pyx_n_u_communicate __pyx_string_tab[95]
-#define __pyx_n_u_component __pyx_string_tab[96]
-#define __pyx_n_u_component_str __pyx_string_tab[97]
-#define __pyx_n_u_ctypes __pyx_string_tab[98]
-#define __pyx_n_u_current_logfile_path __pyx_string_tab[99]
-#define __pyx_n_u_date_part __pyx_string_tab[100]
-#define __pyx_n_u_date_str __pyx_string_tab[101]
-#define __pyx_n_u_datetime __pyx_string_tab[102]
-#define __pyx_n_u_days __pyx_string_tab[103]
-#define __pyx_n_u_debug __pyx_string_tab[104]
-#define __pyx_n_u_decode __pyx_string_tab[105]
-#define __pyx_n_u_dir_path __pyx_string_tab[106]
-#define __pyx_n_u_doc __pyx_string_tab[107]
-#define __pyx_n_u_e __pyx_string_tab[108]
-#define __pyx_n_u_encode __pyx_string_tab[109]
-#define __pyx_n_u_encoding __pyx_string_tab[110]
-#define __pyx_n_u_endswith __pyx_string_tab[111]
-#define __pyx_n_u_ensure_directory_exists __pyx_string_tab[112]
-#define __pyx_n_u_enter __pyx_string_tab[113]
-#define __pyx_n_u_executable __pyx_string_tab[114]
-#define __pyx_n_u_exists __pyx_string_tab[115]
-#define __pyx_n_u_exit __pyx_string_tab[116]
-#define __pyx_n_u_expanduser __pyx_string_tab[117]
-#define __pyx_n_u_f __pyx_string_tab[118]
-#define __pyx_n_u_file __pyx_string_tab[119]
-#define __pyx_n_u_file_path __pyx_string_tab[120]
-#define __pyx_n_u_filename __pyx_string_tab[121]
-#define __pyx_n_u_func __pyx_string_tab[122]
-#define __pyx_n_u_get_log_filename __pyx_string_tab[123]
-#define __pyx_n_u_getenv __pyx_string_tab[124]
-#define __pyx_n_u_geteuid __pyx_string_tab[125]
-#define __pyx_n_u_getpid __pyx_string_tab[126]
-#define __pyx_n_u_has_write_permission __pyx_string_tab[127]
-#define __pyx_n_u_header __pyx_string_tab[128]
-#define __pyx_n_u_home __pyx_string_tab[129]
-#define __pyx_n_u_inPython __pyx_string_tab[130]
-#define __pyx_n_u_init __pyx_string_tab[131]
-#define __pyx_n_u_initializing __pyx_string_tab[132]
-#define __pyx_n_u_isDebug __pyx_string_tab[133]
-#define __pyx_n_u_is_coroutine __pyx_string_tab[134]
-#define __pyx_n_u_is_debug __pyx_string_tab[135]
-#define __pyx_n_u_is_python __pyx_string_tab[136]
-#define __pyx_n_u_is_root __pyx_string_tab[137]
-#define __pyx_n_u_is_root_2 __pyx_string_tab[138]
-#define __pyx_n_u_join __pyx_string_tab[139]
-#define __pyx_n_u_level __pyx_string_tab[140]
-#define __pyx_n_u_level_str __pyx_string_tab[141]
-#define __pyx_n_u_listdir __pyx_string_tab[142]
-#define __pyx_n_u_log __pyx_string_tab[143]
-#define __pyx_n_u_logDir __pyx_string_tab[144]
-#define __pyx_n_u_logName __pyx_string_tab[145]
-#define __pyx_kp_u_log_2 __pyx_string_tab[146]
-#define __pyx_n_u_log_date __pyx_string_tab[147]
-#define __pyx_n_u_log_entry __pyx_string_tab[148]
-#define __pyx_n_u_log_message __pyx_string_tab[149]
-#define __pyx_n_u_log_path __pyx_string_tab[150]
-#define __pyx_n_u_log_rotation __pyx_string_tab[151]
-#define __pyx_n_u_logdir __pyx_string_tab[152]
-#define __pyx_n_u_logdir_2 __pyx_string_tab[153]
-#define __pyx_n_u_logdir_str __pyx_string_tab[154]
-#define __pyx_n_u_logname __pyx_string_tab[155]
-#define __pyx_n_u_logname_2 __pyx_string_tab[156]
-#define __pyx_n_u_lower __pyx_string_tab[157]
-#define __pyx_n_u_main __pyx_string_tab[158]
-#define __pyx_n_u_makedirs __pyx_string_tab[159]
-#define __pyx_n_u_message __pyx_string_tab[160]
-#define __pyx_n_u_message_str __pyx_string_tab[161]
-#define __pyx_n_u_metaclass __pyx_string_tab[162]
-#define __pyx_n_u_module __pyx_string_tab[163]
-#define __pyx_kp_u_n __pyx_string_tab[164]
-#define __pyx_n_u_name __pyx_string_tab[165]
-#define __pyx_n_u_name_2 __pyx_string_tab[166]
-#define __pyx_n_u_new_path __pyx_string_tab[167]
-#define __pyx_n_u_now __pyx_string_tab[168]
-#define __pyx_n_u_old_logfile_path __pyx_string_tab[169]
-#define __pyx_n_u_open __pyx_string_tab[170]
-#define __pyx_n_u_os __pyx_string_tab[171]
-#define __pyx_n_u_path __pyx_string_tab[172]
-#define __pyx_kp_u_pid __pyx_string_tab[173]
-#define __pyx_n_u_pid_2 __pyx_string_tab[174]
-#define __pyx_n_u_pop __pyx_string_tab[175]
-#define __pyx_n_u_prepare __pyx_string_tab[176]
-#define __pyx_n_u_print __pyx_string_tab[177]
-#define __pyx_n_u_proc __pyx_string_tab[178]
-#define __pyx_n_u_python __pyx_string_tab[179]
-#define __pyx_n_u_qualname __pyx_string_tab[180]
-#define __pyx_n_u_re __pyx_string_tab[181]
-#define __pyx_n_u_remove __pyx_string_tab[182]
-#define __pyx_n_u_remove_old_logs __pyx_string_tab[183]
-#define __pyx_n_u_return __pyx_string_tab[184]
-#define __pyx_n_u_returncode __pyx_string_tab[185]
-#define __pyx_n_u_self __pyx_string_tab[186]
-#define __pyx_n_u_set_base_dir __pyx_string_tab[187]
-#define __pyx_n_u_set_log_dir __pyx_string_tab[188]
-#define __pyx_n_u_set_name __pyx_string_tab[189]
-#define __pyx_n_u_should_use_system_paths __pyx_string_tab[190]
-#define __pyx_n_u_show __pyx_string_tab[191]
-#define __pyx_n_u_spec __pyx_string_tab[192]
-#define __pyx_n_u_split __pyx_string_tab[193]
-#define __pyx_kp_u_src_ChronicleLogger_pyx __pyx_string_tab[194]
-#define __pyx_n_u_staticmethod __pyx_string_tab[195]
-#define __pyx_n_u_stderr __pyx_string_tab[196]
-#define __pyx_n_u_stdin __pyx_string_tab[197]
-#define __pyx_n_u_stdout __pyx_string_tab[198]
-#define __pyx_n_u_strToByte __pyx_string_tab[199]
-#define __pyx_n_u_strftime __pyx_string_tab[200]
-#define __pyx_n_u_strip __pyx_string_tab[201]
-#define __pyx_n_u_strptime __pyx_string_tab[202]
-#define __pyx_n_u_sub __pyx_string_tab[203]
-#define __pyx_n_u_subprocess __pyx_string_tab[204]
-#define __pyx_n_u_sudo __pyx_string_tab[205]
-#define __pyx_n_u_sys __pyx_string_tab[206]
-#define __pyx_n_u_tar __pyx_string_tab[207]
-#define __pyx_kp_u_tar_gz __pyx_string_tab[208]
-#define __pyx_n_u_tarfile __pyx_string_tab[209]
-#define __pyx_n_u_test __pyx_string_tab[210]
-#define __pyx_n_u_timeout __pyx_string_tab[211]
-#define __pyx_n_u_timestamp __pyx_string_tab[212]
-#define __pyx_n_u_true __pyx_string_tab[213]
-#define __pyx_n_u_upper __pyx_string_tab[214]
-#define __pyx_kp_u_utf_8 __pyx_string_tab[215]
-#define __pyx_kp_u_v __pyx_string_tab[216]
-#define __pyx_n_u_value __pyx_string_tab[217]
-#define __pyx_kp_u_var __pyx_string_tab[218]
-#define __pyx_kp_u_var_log __pyx_string_tab[219]
-#define __pyx_kp_u_w_gz __pyx_string_tab[220]
-#define __pyx_n_u_write __pyx_string_tab[221]
-#define __pyx_n_u_write_to_file __pyx_string_tab[222]
+#define __pyx_n_u_a __pyx_string_tab[70]
+#define __pyx_n_u_add __pyx_string_tab[71]
+#define __pyx_n_b_app __pyx_string_tab[72]
+#define __pyx_kp_u_app_0 __pyx_string_tab[73]
+#define __pyx_n_u_appname __pyx_string_tab[74]
+#define __pyx_n_u_archive_log __pyx_string_tab[75]
+#define __pyx_n_u_archive_old_logs __pyx_string_tab[76]
+#define __pyx_n_u_archive_path __pyx_string_tab[77]
+#define __pyx_n_u_arcname __pyx_string_tab[78]
+#define __pyx_n_u_asyncio_coroutines __pyx_string_tab[79]
+#define __pyx_n_u_baseDir __pyx_string_tab[80]
+#define __pyx_n_u_basedir __pyx_string_tab[81]
+#define __pyx_n_u_basedir_2 __pyx_string_tab[82]
+#define __pyx_n_u_basedir_str __pyx_string_tab[83]
+#define __pyx_n_u_basestring __pyx_string_tab[84]
+#define __pyx_n_u_byteToStr __pyx_string_tab[85]
+#define __pyx_n_u_c_char_p __pyx_string_tab[86]
+#define __pyx_n_u_can_sudo_nopasswd __pyx_string_tab[87]
+#define __pyx_n_u_can_sudo_without_password __pyx_string_tab[88]
+#define __pyx_n_u_class_version __pyx_string_tab[89]
+#define __pyx_n_u_cline_in_traceback __pyx_string_tab[90]
+#define __pyx_n_u_communicate __pyx_string_tab[91]
+#define __pyx_n_u_component __pyx_string_tab[92]
+#define __pyx_n_u_component_str __pyx_string_tab[93]
+#define __pyx_n_u_ctypes __pyx_string_tab[94]
+#define __pyx_n_u_current_logfile_path __pyx_string_tab[95]
+#define __pyx_n_u_date_part __pyx_string_tab[96]
+#define __pyx_n_u_date_str __pyx_string_tab[97]
+#define __pyx_n_u_datetime __pyx_string_tab[98]
+#define __pyx_n_u_days __pyx_string_tab[99]
+#define __pyx_n_u_debug __pyx_string_tab[100]
+#define __pyx_n_u_decode __pyx_string_tab[101]
+#define __pyx_n_u_devnull __pyx_string_tab[102]
+#define __pyx_n_u_dir_decoded __pyx_string_tab[103]
+#define __pyx_n_u_dir_path __pyx_string_tab[104]
+#define __pyx_n_u_doc __pyx_string_tab[105]
+#define __pyx_n_u_e __pyx_string_tab[106]
+#define __pyx_n_u_encode __pyx_string_tab[107]
+#define __pyx_n_u_encoding __pyx_string_tab[108]
+#define __pyx_n_u_endswith __pyx_string_tab[109]
+#define __pyx_n_u_ensure_directory_exists __pyx_string_tab[110]
+#define __pyx_n_u_enter __pyx_string_tab[111]
+#define __pyx_n_u_exc_info __pyx_string_tab[112]
+#define __pyx_n_u_exc_tb __pyx_string_tab[113]
+#define __pyx_n_u_exc_type __pyx_string_tab[114]
+#define __pyx_n_u_exc_value __pyx_string_tab[115]
+#define __pyx_n_u_executable __pyx_string_tab[116]
+#define __pyx_n_u_exists __pyx_string_tab[117]
+#define __pyx_n_u_exit __pyx_string_tab[118]
+#define __pyx_n_u_expanduser __pyx_string_tab[119]
+#define __pyx_n_u_f __pyx_string_tab[120]
+#define __pyx_n_u_file __pyx_string_tab[121]
+#define __pyx_n_u_file_path __pyx_string_tab[122]
+#define __pyx_n_u_filename __pyx_string_tab[123]
+#define __pyx_n_u_format __pyx_string_tab[124]
+#define __pyx_n_u_func __pyx_string_tab[125]
+#define __pyx_n_u_get_log_filename __pyx_string_tab[126]
+#define __pyx_n_u_getenv __pyx_string_tab[127]
+#define __pyx_n_u_geteuid __pyx_string_tab[128]
+#define __pyx_n_u_getpid __pyx_string_tab[129]
+#define __pyx_n_u_has_write_permission __pyx_string_tab[130]
+#define __pyx_n_u_header __pyx_string_tab[131]
+#define __pyx_n_u_home __pyx_string_tab[132]
+#define __pyx_n_u_inPython __pyx_string_tab[133]
+#define __pyx_n_u_init __pyx_string_tab[134]
+#define __pyx_n_u_initializing __pyx_string_tab[135]
+#define __pyx_n_u_io __pyx_string_tab[136]
+#define __pyx_n_u_io_open __pyx_string_tab[137]
+#define __pyx_n_u_isDebug __pyx_string_tab[138]
+#define __pyx_n_u_is_coroutine __pyx_string_tab[139]
+#define __pyx_n_u_is_debug __pyx_string_tab[140]
+#define __pyx_n_u_is_python __pyx_string_tab[141]
+#define __pyx_n_u_is_root __pyx_string_tab[142]
+#define __pyx_n_u_is_root_2 __pyx_string_tab[143]
+#define __pyx_n_u_join __pyx_string_tab[144]
+#define __pyx_n_u_level __pyx_string_tab[145]
+#define __pyx_n_u_level_str __pyx_string_tab[146]
+#define __pyx_n_u_listdir __pyx_string_tab[147]
+#define __pyx_n_u_log __pyx_string_tab[148]
+#define __pyx_n_u_logDir __pyx_string_tab[149]
+#define __pyx_n_u_logName __pyx_string_tab[150]
+#define __pyx_kp_u_log_2 __pyx_string_tab[151]
+#define __pyx_n_u_log_date __pyx_string_tab[152]
+#define __pyx_n_u_log_entry __pyx_string_tab[153]
+#define __pyx_n_u_log_message __pyx_string_tab[154]
+#define __pyx_n_u_log_path __pyx_string_tab[155]
+#define __pyx_n_u_log_rotation __pyx_string_tab[156]
+#define __pyx_n_u_logdir __pyx_string_tab[157]
+#define __pyx_n_u_logdir_2 __pyx_string_tab[158]
+#define __pyx_n_u_logdir_str __pyx_string_tab[159]
+#define __pyx_n_u_logname __pyx_string_tab[160]
+#define __pyx_n_u_logname_2 __pyx_string_tab[161]
+#define __pyx_n_u_lower __pyx_string_tab[162]
+#define __pyx_n_u_main __pyx_string_tab[163]
+#define __pyx_n_u_makedirs __pyx_string_tab[164]
+#define __pyx_n_u_message __pyx_string_tab[165]
+#define __pyx_n_u_message_str __pyx_string_tab[166]
+#define __pyx_n_u_metaclass __pyx_string_tab[167]
+#define __pyx_n_u_module __pyx_string_tab[168]
+#define __pyx_kp_u_n __pyx_string_tab[169]
+#define __pyx_n_u_name __pyx_string_tab[170]
+#define __pyx_n_u_name_2 __pyx_string_tab[171]
+#define __pyx_n_u_name_decoded __pyx_string_tab[172]
+#define __pyx_n_u_new_path __pyx_string_tab[173]
+#define __pyx_n_u_new_path_decoded __pyx_string_tab[174]
+#define __pyx_n_u_now __pyx_string_tab[175]
+#define __pyx_n_u_old_logfile_path __pyx_string_tab[176]
+#define __pyx_n_u_open __pyx_string_tab[177]
+#define __pyx_n_u_os __pyx_string_tab[178]
+#define __pyx_n_u_path __pyx_string_tab[179]
+#define __pyx_n_u_pid __pyx_string_tab[180]
+#define __pyx_n_u_pop __pyx_string_tab[181]
+#define __pyx_n_u_prepare __pyx_string_tab[182]
+#define __pyx_n_u_print __pyx_string_tab[183]
+#define __pyx_n_u_proc __pyx_string_tab[184]
+#define __pyx_n_u_python __pyx_string_tab[185]
+#define __pyx_n_u_qualname __pyx_string_tab[186]
+#define __pyx_n_u_re __pyx_string_tab[187]
+#define __pyx_n_u_remove __pyx_string_tab[188]
+#define __pyx_n_u_remove_old_logs __pyx_string_tab[189]
+#define __pyx_n_u_returncode __pyx_string_tab[190]
+#define __pyx_n_u_self __pyx_string_tab[191]
+#define __pyx_n_u_set_base_dir __pyx_string_tab[192]
+#define __pyx_n_u_set_log_dir __pyx_string_tab[193]
+#define __pyx_n_u_set_name __pyx_string_tab[194]
+#define __pyx_n_u_should_use_system_paths __pyx_string_tab[195]
+#define __pyx_n_u_show __pyx_string_tab[196]
+#define __pyx_n_u_spec __pyx_string_tab[197]
+#define __pyx_n_u_split __pyx_string_tab[198]
+#define __pyx_kp_u_src_ChronicleLogger_pyx __pyx_string_tab[199]
+#define __pyx_n_u_staticmethod __pyx_string_tab[200]
+#define __pyx_n_u_stderr __pyx_string_tab[201]
+#define __pyx_n_u_stdin __pyx_string_tab[202]
+#define __pyx_n_u_stdout __pyx_string_tab[203]
+#define __pyx_n_u_strToByte __pyx_string_tab[204]
+#define __pyx_n_u_strftime __pyx_string_tab[205]
+#define __pyx_n_u_strip __pyx_string_tab[206]
+#define __pyx_n_u_strptime __pyx_string_tab[207]
+#define __pyx_n_u_sub __pyx_string_tab[208]
+#define __pyx_n_u_subprocess __pyx_string_tab[209]
+#define __pyx_n_u_sudo __pyx_string_tab[210]
+#define __pyx_n_u_sys __pyx_string_tab[211]
+#define __pyx_n_u_tar __pyx_string_tab[212]
+#define __pyx_kp_u_tar_gz __pyx_string_tab[213]
+#define __pyx_n_u_tarfile __pyx_string_tab[214]
+#define __pyx_n_u_test __pyx_string_tab[215]
+#define __pyx_n_u_timeout __pyx_string_tab[216]
+#define __pyx_n_u_timestamp __pyx_string_tab[217]
+#define __pyx_n_u_true __pyx_string_tab[218]
+#define __pyx_n_u_upper __pyx_string_tab[219]
+#define __pyx_kp_u_utf_8 __pyx_string_tab[220]
+#define __pyx_n_u_value __pyx_string_tab[221]
+#define __pyx_kp_u_var_0 __pyx_string_tab[222]
+#define __pyx_kp_u_var_log_0 __pyx_string_tab[223]
+#define __pyx_n_u_version_info __pyx_string_tab[224]
+#define __pyx_kp_u_w_gz __pyx_string_tab[225]
+#define __pyx_n_u_wb __pyx_string_tab[226]
+#define __pyx_n_u_write __pyx_string_tab[227]
+#define __pyx_n_u_write_to_file __pyx_string_tab[228]
 /* #### Code section: module_state_clear ### */
 #if CYTHON_USE_MODULE_STATE
 static CYTHON_SMALL_CODE int __pyx_m_clear(PyObject *m) {
@@ -2958,11 +2952,12 @@ static CYTHON_SMALL_CODE int __pyx_m_clear(PyObject *m) {
   #if CYTHON_PEP489_MULTI_PHASE_INIT
   __Pyx_State_RemoveModule(NULL);
   #endif
-  for (int i=0; i<7; ++i) { Py_CLEAR(clear_module_state->__pyx_tuple[i]); }
+  for (int i=0; i<9; ++i) { Py_CLEAR(clear_module_state->__pyx_tuple[i]); }
   for (int i=0; i<24; ++i) { Py_CLEAR(clear_module_state->__pyx_codeobj_tab[i]); }
-  for (int i=0; i<223; ++i) { Py_CLEAR(clear_module_state->__pyx_string_tab[i]); }
+  for (int i=0; i<229; ++i) { Py_CLEAR(clear_module_state->__pyx_string_tab[i]); }
   Py_CLEAR(clear_module_state->__pyx_int_0);
   Py_CLEAR(clear_module_state->__pyx_int_1);
+  Py_CLEAR(clear_module_state->__pyx_int_3);
   Py_CLEAR(clear_module_state->__pyx_int_5);
   Py_CLEAR(clear_module_state->__pyx_int_7);
   Py_CLEAR(clear_module_state->__pyx_int_30);
@@ -2986,11 +2981,12 @@ static CYTHON_SMALL_CODE int __pyx_m_traverse(PyObject *m, visitproc visit, void
   #ifdef __Pyx_FusedFunction_USED
   Py_VISIT(traverse_module_state->__pyx_FusedFunctionType);
   #endif
-  for (int i=0; i<7; ++i) { __Pyx_VISIT_CONST(traverse_module_state->__pyx_tuple[i]); }
+  for (int i=0; i<9; ++i) { __Pyx_VISIT_CONST(traverse_module_state->__pyx_tuple[i]); }
   for (int i=0; i<24; ++i) { __Pyx_VISIT_CONST(traverse_module_state->__pyx_codeobj_tab[i]); }
-  for (int i=0; i<223; ++i) { __Pyx_VISIT_CONST(traverse_module_state->__pyx_string_tab[i]); }
+  for (int i=0; i<229; ++i) { __Pyx_VISIT_CONST(traverse_module_state->__pyx_string_tab[i]); }
   __Pyx_VISIT_CONST(traverse_module_state->__pyx_int_0);
   __Pyx_VISIT_CONST(traverse_module_state->__pyx_int_1);
+  __Pyx_VISIT_CONST(traverse_module_state->__pyx_int_3);
   __Pyx_VISIT_CONST(traverse_module_state->__pyx_int_5);
   __Pyx_VISIT_CONST(traverse_module_state->__pyx_int_7);
   __Pyx_VISIT_CONST(traverse_module_state->__pyx_int_30);
@@ -2999,7 +2995,7 @@ static CYTHON_SMALL_CODE int __pyx_m_traverse(PyObject *m, visitproc visit, void
 #endif
 /* #### Code section: module_code ### */
 
-/* "ChronicleLogger.pyx":33
+/* "ChronicleLogger.pyx":35
  *     _can_sudo_nopasswd = None
  * 
  *     @staticmethod             # <<<<<<<<<<<<<<
@@ -3030,73 +3026,38 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_class_version(CYTHON_UNUSED
   PyObject *__pyx_t_1 = NULL;
   PyObject *__pyx_t_2 = NULL;
   PyObject *__pyx_t_3 = NULL;
-  PyObject *__pyx_t_4 = NULL;
-  PyObject *__pyx_t_5 = NULL;
-  PyObject *__pyx_t_6[7];
+  size_t __pyx_t_4;
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("class_version", 0);
 
-  /* "ChronicleLogger.pyx":36
- *     def class_version():
+  /* "ChronicleLogger.pyx":39
  *         """Return the class name and version string."""
- *         return f"{_Suroot.CLASSNAME} v{_Suroot.MAJOR_VERSION}.{_Suroot.MINOR_VERSION}.{_Suroot.PATCH_VERSION}"             # <<<<<<<<<<<<<<
+ *         # NEW: Replaced f-string with .format() for Py2 compat (f-strings Py3.6+)
+ *         return "{0.CLASSNAME} v{0.MAJOR_VERSION}.{0.MINOR_VERSION}.{0.PATCH_VERSION}".format(_Suroot)             # <<<<<<<<<<<<<<
  * 
  *     @staticmethod
 */
   __Pyx_XDECREF(__pyx_r);
-  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 36, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_CLASSNAME); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 36, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_2);
-  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __pyx_t_1 = __Pyx_PyObject_FormatSimple(__pyx_t_2, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 36, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_1);
-  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 36, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_2);
-  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_MAJOR_VERSION); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 36, __pyx_L1_error)
+  __pyx_t_2 = __pyx_mstate_global->__pyx_kp_u_0_CLASSNAME_v_0_MAJOR_VERSION_0;
+  __Pyx_INCREF(__pyx_t_2);
+  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 39, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __pyx_t_2 = __Pyx_PyObject_FormatSimple(__pyx_t_3, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 36, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_2);
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 36, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_MINOR_VERSION); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 36, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_4);
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_PyObject_FormatSimple(__pyx_t_4, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 36, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-  __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 36, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_4);
-  __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_PATCH_VERSION); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 36, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_5);
-  __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-  __pyx_t_4 = __Pyx_PyObject_FormatSimple(__pyx_t_5, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 36, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_4);
-  __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-  __pyx_t_6[0] = __pyx_t_1;
-  __pyx_t_6[1] = __pyx_mstate_global->__pyx_kp_u_v;
-  __pyx_t_6[2] = __pyx_t_2;
-  __pyx_t_6[3] = __pyx_mstate_global->__pyx_kp_u_;
-  __pyx_t_6[4] = __pyx_t_3;
-  __pyx_t_6[5] = __pyx_mstate_global->__pyx_kp_u_;
-  __pyx_t_6[6] = __pyx_t_4;
-  __pyx_t_5 = __Pyx_PyUnicode_Join(__pyx_t_6, 7, __Pyx_PyUnicode_GET_LENGTH(__pyx_t_1) + 2 + __Pyx_PyUnicode_GET_LENGTH(__pyx_t_2) + 1 * 2 + __Pyx_PyUnicode_GET_LENGTH(__pyx_t_3) + __Pyx_PyUnicode_GET_LENGTH(__pyx_t_4), 127 | __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_1) | __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_2) | __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_3) | __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_4));
-  if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 36, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_5);
-  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-  __pyx_r = __pyx_t_5;
-  __pyx_t_5 = 0;
+  __pyx_t_4 = 0;
+  {
+    PyObject *__pyx_callargs[2] = {__pyx_t_2, __pyx_t_3};
+    __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_format, __pyx_callargs+__pyx_t_4, (2-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+    __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
+    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 39, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
+  }
+  __pyx_r = __pyx_t_1;
+  __pyx_t_1 = 0;
   goto __pyx_L0;
 
-  /* "ChronicleLogger.pyx":33
+  /* "ChronicleLogger.pyx":35
  *     _can_sudo_nopasswd = None
  * 
  *     @staticmethod             # <<<<<<<<<<<<<<
@@ -3109,8 +3070,6 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_class_version(CYTHON_UNUSED
   __Pyx_XDECREF(__pyx_t_1);
   __Pyx_XDECREF(__pyx_t_2);
   __Pyx_XDECREF(__pyx_t_3);
-  __Pyx_XDECREF(__pyx_t_4);
-  __Pyx_XDECREF(__pyx_t_5);
   __Pyx_AddTraceback("ChronicleLogger._Suroot.class_version", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = NULL;
   __pyx_L0:;
@@ -3119,11 +3078,11 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_class_version(CYTHON_UNUSED
   return __pyx_r;
 }
 
-/* "ChronicleLogger.pyx":38
- *         return f"{_Suroot.CLASSNAME} v{_Suroot.MAJOR_VERSION}.{_Suroot.MINOR_VERSION}.{_Suroot.PATCH_VERSION}"
+/* "ChronicleLogger.pyx":41
+ *         return "{0.CLASSNAME} v{0.MAJOR_VERSION}.{0.MINOR_VERSION}.{0.PATCH_VERSION}".format(_Suroot)
  * 
  *     @staticmethod             # <<<<<<<<<<<<<<
- *     def is_root() -> bool:
+ *     def is_root():  # NEW: Removed -> bool type hint (Py3.5+ syntax error in Py2)
  *         """Are we currently running as root (euid == 0)?"""
 */
 
@@ -3158,23 +3117,23 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_2is_root(CYTHON_UNUSED PyOb
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("is_root", 0);
 
-  /* "ChronicleLogger.pyx":41
- *     def is_root() -> bool:
+  /* "ChronicleLogger.pyx":44
+ *     def is_root():  # NEW: Removed -> bool type hint (Py3.5+ syntax error in Py2)
  *         """Are we currently running as root (euid == 0)?"""
  *         if _Suroot._is_root is None:             # <<<<<<<<<<<<<<
  *             _Suroot._is_root = os.geteuid() == 0
  *         return _Suroot._is_root
 */
-  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 41, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 44, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_is_root); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 41, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_is_root); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 44, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   __pyx_t_3 = (__pyx_t_2 == Py_None);
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   if (__pyx_t_3) {
 
-    /* "ChronicleLogger.pyx":42
+    /* "ChronicleLogger.pyx":45
  *         """Are we currently running as root (euid == 0)?"""
  *         if _Suroot._is_root is None:
  *             _Suroot._is_root = os.geteuid() == 0             # <<<<<<<<<<<<<<
@@ -3182,9 +3141,9 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_2is_root(CYTHON_UNUSED PyOb
  * 
 */
     __pyx_t_1 = NULL;
-    __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 42, __pyx_L1_error)
+    __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 45, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_4);
-    __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_geteuid); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 42, __pyx_L1_error)
+    __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_geteuid); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 45, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_5);
     __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
     __pyx_t_6 = 1;
@@ -3204,20 +3163,20 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_2is_root(CYTHON_UNUSED PyOb
       __pyx_t_2 = __Pyx_PyObject_FastCall(__pyx_t_5, __pyx_callargs+__pyx_t_6, (1-__pyx_t_6) | (__pyx_t_6*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
       __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
       __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-      if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 42, __pyx_L1_error)
+      if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 45, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_2);
     }
-    __pyx_t_5 = __Pyx_PyLong_EqObjC(__pyx_t_2, __pyx_mstate_global->__pyx_int_0, 0, 0); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 42, __pyx_L1_error)
+    __pyx_t_5 = __Pyx_PyLong_EqObjC(__pyx_t_2, __pyx_mstate_global->__pyx_int_0, 0, 0); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 45, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_5);
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-    __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 42, __pyx_L1_error)
+    __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 45, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
-    if (__Pyx_PyObject_SetAttrStr(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_is_root, __pyx_t_5) < 0) __PYX_ERR(0, 42, __pyx_L1_error)
+    if (__Pyx_PyObject_SetAttrStr(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_is_root, __pyx_t_5) < 0) __PYX_ERR(0, 45, __pyx_L1_error)
     __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-    /* "ChronicleLogger.pyx":41
- *     def is_root() -> bool:
+    /* "ChronicleLogger.pyx":44
+ *     def is_root():  # NEW: Removed -> bool type hint (Py3.5+ syntax error in Py2)
  *         """Are we currently running as root (euid == 0)?"""
  *         if _Suroot._is_root is None:             # <<<<<<<<<<<<<<
  *             _Suroot._is_root = os.geteuid() == 0
@@ -3225,7 +3184,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_2is_root(CYTHON_UNUSED PyOb
 */
   }
 
-  /* "ChronicleLogger.pyx":43
+  /* "ChronicleLogger.pyx":46
  *         if _Suroot._is_root is None:
  *             _Suroot._is_root = os.geteuid() == 0
  *         return _Suroot._is_root             # <<<<<<<<<<<<<<
@@ -3233,20 +3192,20 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_2is_root(CYTHON_UNUSED PyOb
  *     @staticmethod
 */
   __Pyx_XDECREF(__pyx_r);
-  __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 43, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 46, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_is_root); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 43, __pyx_L1_error)
+  __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_is_root); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 46, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_5);
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __pyx_r = __pyx_t_5;
   __pyx_t_5 = 0;
   goto __pyx_L0;
 
-  /* "ChronicleLogger.pyx":38
- *         return f"{_Suroot.CLASSNAME} v{_Suroot.MAJOR_VERSION}.{_Suroot.MINOR_VERSION}.{_Suroot.PATCH_VERSION}"
+  /* "ChronicleLogger.pyx":41
+ *         return "{0.CLASSNAME} v{0.MAJOR_VERSION}.{0.MINOR_VERSION}.{0.PATCH_VERSION}".format(_Suroot)
  * 
  *     @staticmethod             # <<<<<<<<<<<<<<
- *     def is_root() -> bool:
+ *     def is_root():  # NEW: Removed -> bool type hint (Py3.5+ syntax error in Py2)
  *         """Are we currently running as root (euid == 0)?"""
 */
 
@@ -3264,11 +3223,11 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_2is_root(CYTHON_UNUSED PyOb
   return __pyx_r;
 }
 
-/* "ChronicleLogger.pyx":45
+/* "ChronicleLogger.pyx":48
  *         return _Suroot._is_root
  * 
  *     @staticmethod             # <<<<<<<<<<<<<<
- *     def can_sudo_without_password() -> bool:
+ *     def can_sudo_without_password():  # NEW: Removed -> bool type hint
  *         """Can we run 'sudo' commands without being asked for a password?"""
 */
 
@@ -3307,28 +3266,29 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_4can_sudo_without_password(
   PyObject *__pyx_t_12 = NULL;
   PyObject *__pyx_t_13 = NULL;
   int __pyx_t_14;
+  int __pyx_t_15;
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("can_sudo_without_password", 0);
 
-  /* "ChronicleLogger.pyx":48
- *     def can_sudo_without_password() -> bool:
+  /* "ChronicleLogger.pyx":51
+ *     def can_sudo_without_password():  # NEW: Removed -> bool type hint
  *         """Can we run 'sudo' commands without being asked for a password?"""
  *         if _Suroot._can_sudo_nopasswd is not None:             # <<<<<<<<<<<<<<
  *             return _Suroot._can_sudo_nopasswd
  * 
 */
-  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 48, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 51, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_can_sudo_nopasswd); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 48, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_can_sudo_nopasswd); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 51, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   __pyx_t_3 = (__pyx_t_2 != Py_None);
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   if (__pyx_t_3) {
 
-    /* "ChronicleLogger.pyx":49
+    /* "ChronicleLogger.pyx":52
  *         """Can we run 'sudo' commands without being asked for a password?"""
  *         if _Suroot._can_sudo_nopasswd is not None:
  *             return _Suroot._can_sudo_nopasswd             # <<<<<<<<<<<<<<
@@ -3336,17 +3296,17 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_4can_sudo_without_password(
  *         if _Suroot.is_root():
 */
     __Pyx_XDECREF(__pyx_r);
-    __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 49, __pyx_L1_error)
+    __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 52, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
-    __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_can_sudo_nopasswd); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 49, __pyx_L1_error)
+    __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_can_sudo_nopasswd); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 52, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
     __pyx_r = __pyx_t_1;
     __pyx_t_1 = 0;
     goto __pyx_L0;
 
-    /* "ChronicleLogger.pyx":48
- *     def can_sudo_without_password() -> bool:
+    /* "ChronicleLogger.pyx":51
+ *     def can_sudo_without_password():  # NEW: Removed -> bool type hint
  *         """Can we run 'sudo' commands without being asked for a password?"""
  *         if _Suroot._can_sudo_nopasswd is not None:             # <<<<<<<<<<<<<<
  *             return _Suroot._can_sudo_nopasswd
@@ -3354,7 +3314,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_4can_sudo_without_password(
 */
   }
 
-  /* "ChronicleLogger.pyx":51
+  /* "ChronicleLogger.pyx":54
  *             return _Suroot._can_sudo_nopasswd
  * 
  *         if _Suroot.is_root():             # <<<<<<<<<<<<<<
@@ -3362,9 +3322,9 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_4can_sudo_without_password(
  *             return True
 */
   __pyx_t_2 = NULL;
-  __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 51, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 54, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_4);
-  __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_is_root_2); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 51, __pyx_L1_error)
+  __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_is_root_2); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 54, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_5);
   __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
   __pyx_t_6 = 1;
@@ -3384,26 +3344,26 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_4can_sudo_without_password(
     __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_5, __pyx_callargs+__pyx_t_6, (1-__pyx_t_6) | (__pyx_t_6*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
     __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
     __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 51, __pyx_L1_error)
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 54, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
   }
-  __pyx_t_3 = __Pyx_PyObject_IsTrue(__pyx_t_1); if (unlikely((__pyx_t_3 < 0))) __PYX_ERR(0, 51, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_PyObject_IsTrue(__pyx_t_1); if (unlikely((__pyx_t_3 < 0))) __PYX_ERR(0, 54, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   if (__pyx_t_3) {
 
-    /* "ChronicleLogger.pyx":52
+    /* "ChronicleLogger.pyx":55
  * 
  *         if _Suroot.is_root():
  *             _Suroot._can_sudo_nopasswd = True             # <<<<<<<<<<<<<<
  *             return True
  * 
 */
-    __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 52, __pyx_L1_error)
+    __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 55, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
-    if (__Pyx_PyObject_SetAttrStr(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_can_sudo_nopasswd, Py_True) < 0) __PYX_ERR(0, 52, __pyx_L1_error)
+    if (__Pyx_PyObject_SetAttrStr(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_can_sudo_nopasswd, Py_True) < 0) __PYX_ERR(0, 55, __pyx_L1_error)
     __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-    /* "ChronicleLogger.pyx":53
+    /* "ChronicleLogger.pyx":56
  *         if _Suroot.is_root():
  *             _Suroot._can_sudo_nopasswd = True
  *             return True             # <<<<<<<<<<<<<<
@@ -3415,7 +3375,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_4can_sudo_without_password(
     __pyx_r = Py_True;
     goto __pyx_L0;
 
-    /* "ChronicleLogger.pyx":51
+    /* "ChronicleLogger.pyx":54
  *             return _Suroot._can_sudo_nopasswd
  * 
  *         if _Suroot.is_root():             # <<<<<<<<<<<<<<
@@ -3424,7 +3384,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_4can_sudo_without_password(
 */
   }
 
-  /* "ChronicleLogger.pyx":55
+  /* "ChronicleLogger.pyx":58
  *             return True
  * 
  *         try:             # <<<<<<<<<<<<<<
@@ -3440,7 +3400,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_4can_sudo_without_password(
     __Pyx_XGOTREF(__pyx_t_9);
     /*try:*/ {
 
-      /* "ChronicleLogger.pyx":56
+      /* "ChronicleLogger.pyx":59
  * 
  *         try:
  *             proc = Popen(             # <<<<<<<<<<<<<<
@@ -3448,56 +3408,56 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_4can_sudo_without_password(
  *                 stdin=DEVNULL,
 */
       __pyx_t_5 = NULL;
-      __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_Popen); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 56, __pyx_L5_error)
+      __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_Popen); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 59, __pyx_L5_error)
       __Pyx_GOTREF(__pyx_t_2);
 
-      /* "ChronicleLogger.pyx":57
+      /* "ChronicleLogger.pyx":60
  *         try:
  *             proc = Popen(
  *                 ["sudo", "-n", "true"],             # <<<<<<<<<<<<<<
  *                 stdin=DEVNULL,
  *                 stdout=DEVNULL,
 */
-      __pyx_t_4 = PyList_New(3); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 57, __pyx_L5_error)
+      __pyx_t_4 = PyList_New(3); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 60, __pyx_L5_error)
       __Pyx_GOTREF(__pyx_t_4);
       __Pyx_INCREF(__pyx_mstate_global->__pyx_n_u_sudo);
       __Pyx_GIVEREF(__pyx_mstate_global->__pyx_n_u_sudo);
-      if (__Pyx_PyList_SET_ITEM(__pyx_t_4, 0, __pyx_mstate_global->__pyx_n_u_sudo) != (0)) __PYX_ERR(0, 57, __pyx_L5_error);
+      if (__Pyx_PyList_SET_ITEM(__pyx_t_4, 0, __pyx_mstate_global->__pyx_n_u_sudo) != (0)) __PYX_ERR(0, 60, __pyx_L5_error);
       __Pyx_INCREF(__pyx_mstate_global->__pyx_kp_u_n);
       __Pyx_GIVEREF(__pyx_mstate_global->__pyx_kp_u_n);
-      if (__Pyx_PyList_SET_ITEM(__pyx_t_4, 1, __pyx_mstate_global->__pyx_kp_u_n) != (0)) __PYX_ERR(0, 57, __pyx_L5_error);
+      if (__Pyx_PyList_SET_ITEM(__pyx_t_4, 1, __pyx_mstate_global->__pyx_kp_u_n) != (0)) __PYX_ERR(0, 60, __pyx_L5_error);
       __Pyx_INCREF(__pyx_mstate_global->__pyx_n_u_true);
       __Pyx_GIVEREF(__pyx_mstate_global->__pyx_n_u_true);
-      if (__Pyx_PyList_SET_ITEM(__pyx_t_4, 2, __pyx_mstate_global->__pyx_n_u_true) != (0)) __PYX_ERR(0, 57, __pyx_L5_error);
+      if (__Pyx_PyList_SET_ITEM(__pyx_t_4, 2, __pyx_mstate_global->__pyx_n_u_true) != (0)) __PYX_ERR(0, 60, __pyx_L5_error);
 
-      /* "ChronicleLogger.pyx":58
+      /* "ChronicleLogger.pyx":61
  *             proc = Popen(
  *                 ["sudo", "-n", "true"],
  *                 stdin=DEVNULL,             # <<<<<<<<<<<<<<
  *                 stdout=DEVNULL,
  *                 stderr=DEVNULL,
 */
-      __Pyx_GetModuleGlobalName(__pyx_t_10, __pyx_mstate_global->__pyx_n_u_DEVNULL); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 58, __pyx_L5_error)
+      __Pyx_GetModuleGlobalName(__pyx_t_10, __pyx_mstate_global->__pyx_n_u_DEVNULL); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 61, __pyx_L5_error)
       __Pyx_GOTREF(__pyx_t_10);
 
-      /* "ChronicleLogger.pyx":59
+      /* "ChronicleLogger.pyx":62
  *                 ["sudo", "-n", "true"],
  *                 stdin=DEVNULL,
  *                 stdout=DEVNULL,             # <<<<<<<<<<<<<<
  *                 stderr=DEVNULL,
  *             )
 */
-      __Pyx_GetModuleGlobalName(__pyx_t_11, __pyx_mstate_global->__pyx_n_u_DEVNULL); if (unlikely(!__pyx_t_11)) __PYX_ERR(0, 59, __pyx_L5_error)
+      __Pyx_GetModuleGlobalName(__pyx_t_11, __pyx_mstate_global->__pyx_n_u_DEVNULL); if (unlikely(!__pyx_t_11)) __PYX_ERR(0, 62, __pyx_L5_error)
       __Pyx_GOTREF(__pyx_t_11);
 
-      /* "ChronicleLogger.pyx":60
+      /* "ChronicleLogger.pyx":63
  *                 stdin=DEVNULL,
  *                 stdout=DEVNULL,
  *                 stderr=DEVNULL,             # <<<<<<<<<<<<<<
  *             )
- *             proc.communicate(timeout=5)
+ *             # NEW: Py2 compat for communicate(timeout=5): Py2 Popen.communicate() lacks timeout (Py3.3+); use version check and fallback to no timeout (or add threading if strict timeout needed)
 */
-      __Pyx_GetModuleGlobalName(__pyx_t_12, __pyx_mstate_global->__pyx_n_u_DEVNULL); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 60, __pyx_L5_error)
+      __Pyx_GetModuleGlobalName(__pyx_t_12, __pyx_mstate_global->__pyx_n_u_DEVNULL); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 63, __pyx_L5_error)
       __Pyx_GOTREF(__pyx_t_12);
       __pyx_t_6 = 1;
       #if CYTHON_UNPACK_METHODS
@@ -3513,11 +3473,11 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_4can_sudo_without_password(
       #endif
       {
         PyObject *__pyx_callargs[2 + ((CYTHON_VECTORCALL) ? 3 : 0)] = {__pyx_t_5, __pyx_t_4};
-        __pyx_t_13 = __Pyx_MakeVectorcallBuilderKwds(3); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 56, __pyx_L5_error)
+        __pyx_t_13 = __Pyx_MakeVectorcallBuilderKwds(3); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 59, __pyx_L5_error)
         __Pyx_GOTREF(__pyx_t_13);
-        if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_stdin, __pyx_t_10, __pyx_t_13, __pyx_callargs+2, 0) < 0) __PYX_ERR(0, 56, __pyx_L5_error)
-        if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_stdout, __pyx_t_11, __pyx_t_13, __pyx_callargs+2, 1) < 0) __PYX_ERR(0, 56, __pyx_L5_error)
-        if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_stderr, __pyx_t_12, __pyx_t_13, __pyx_callargs+2, 2) < 0) __PYX_ERR(0, 56, __pyx_L5_error)
+        if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_stdin, __pyx_t_10, __pyx_t_13, __pyx_callargs+2, 0) < 0) __PYX_ERR(0, 59, __pyx_L5_error)
+        if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_stdout, __pyx_t_11, __pyx_t_13, __pyx_callargs+2, 1) < 0) __PYX_ERR(0, 59, __pyx_L5_error)
+        if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_stderr, __pyx_t_12, __pyx_t_13, __pyx_callargs+2, 2) < 0) __PYX_ERR(0, 59, __pyx_L5_error)
         __pyx_t_1 = __Pyx_Object_Vectorcall_CallFromBuilder(__pyx_t_2, __pyx_callargs+__pyx_t_6, (2-__pyx_t_6) | (__pyx_t_6*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET), __pyx_t_13);
         __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
         __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
@@ -3526,54 +3486,126 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_4can_sudo_without_password(
         __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
         __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
         __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-        if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 56, __pyx_L5_error)
+        if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 59, __pyx_L5_error)
         __Pyx_GOTREF(__pyx_t_1);
       }
       __pyx_v_proc = __pyx_t_1;
       __pyx_t_1 = 0;
 
-      /* "ChronicleLogger.pyx":62
- *                 stderr=DEVNULL,
+      /* "ChronicleLogger.pyx":66
  *             )
- *             proc.communicate(timeout=5)             # <<<<<<<<<<<<<<
+ *             # NEW: Py2 compat for communicate(timeout=5): Py2 Popen.communicate() lacks timeout (Py3.3+); use version check and fallback to no timeout (or add threading if strict timeout needed)
+ *             if sys.version_info[0] >= 3 and sys.version_info[1] >= 3:             # <<<<<<<<<<<<<<
+ *                 proc.communicate(timeout=5)
+ *             else:
+*/
+      __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 66, __pyx_L5_error)
+      __Pyx_GOTREF(__pyx_t_1);
+      __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_version_info); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 66, __pyx_L5_error)
+      __Pyx_GOTREF(__pyx_t_2);
+      __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+      __pyx_t_1 = __Pyx_GetItemInt(__pyx_t_2, 0, long, 1, __Pyx_PyLong_From_long, 0, 0, 1, 1); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 66, __pyx_L5_error)
+      __Pyx_GOTREF(__pyx_t_1);
+      __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+      __pyx_t_2 = PyObject_RichCompare(__pyx_t_1, __pyx_mstate_global->__pyx_int_3, Py_GE); __Pyx_XGOTREF(__pyx_t_2); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 66, __pyx_L5_error)
+      __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+      __pyx_t_14 = __Pyx_PyObject_IsTrue(__pyx_t_2); if (unlikely((__pyx_t_14 < 0))) __PYX_ERR(0, 66, __pyx_L5_error)
+      __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+      if (__pyx_t_14) {
+      } else {
+        __pyx_t_3 = __pyx_t_14;
+        goto __pyx_L12_bool_binop_done;
+      }
+      __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 66, __pyx_L5_error)
+      __Pyx_GOTREF(__pyx_t_2);
+      __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_version_info); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 66, __pyx_L5_error)
+      __Pyx_GOTREF(__pyx_t_1);
+      __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+      __pyx_t_2 = __Pyx_GetItemInt(__pyx_t_1, 1, long, 1, __Pyx_PyLong_From_long, 0, 0, 1, 1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 66, __pyx_L5_error)
+      __Pyx_GOTREF(__pyx_t_2);
+      __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+      __pyx_t_1 = PyObject_RichCompare(__pyx_t_2, __pyx_mstate_global->__pyx_int_3, Py_GE); __Pyx_XGOTREF(__pyx_t_1); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 66, __pyx_L5_error)
+      __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+      __pyx_t_14 = __Pyx_PyObject_IsTrue(__pyx_t_1); if (unlikely((__pyx_t_14 < 0))) __PYX_ERR(0, 66, __pyx_L5_error)
+      __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+      __pyx_t_3 = __pyx_t_14;
+      __pyx_L12_bool_binop_done:;
+      if (__pyx_t_3) {
+
+        /* "ChronicleLogger.pyx":67
+ *             # NEW: Py2 compat for communicate(timeout=5): Py2 Popen.communicate() lacks timeout (Py3.3+); use version check and fallback to no timeout (or add threading if strict timeout needed)
+ *             if sys.version_info[0] >= 3 and sys.version_info[1] >= 3:
+ *                 proc.communicate(timeout=5)             # <<<<<<<<<<<<<<
+ *             else:
+ *                 proc.communicate()  # No timeout in Py2; process may hang if sudo hangs, but non-interactive -n prevents prompts
+*/
+        __pyx_t_2 = __pyx_v_proc;
+        __Pyx_INCREF(__pyx_t_2);
+        __pyx_t_6 = 0;
+        {
+          PyObject *__pyx_callargs[2 + ((CYTHON_VECTORCALL) ? 1 : 0)] = {__pyx_t_2, NULL};
+          __pyx_t_13 = __Pyx_MakeVectorcallBuilderKwds(1); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 67, __pyx_L5_error)
+          __Pyx_GOTREF(__pyx_t_13);
+          if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_timeout, __pyx_mstate_global->__pyx_int_5, __pyx_t_13, __pyx_callargs+1, 0) < 0) __PYX_ERR(0, 67, __pyx_L5_error)
+          __pyx_t_1 = __Pyx_Object_VectorcallMethod_CallFromBuilder(__pyx_mstate_global->__pyx_n_u_communicate, __pyx_callargs+__pyx_t_6, (1-__pyx_t_6) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET), __pyx_t_13);
+          __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
+          __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
+          if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 67, __pyx_L5_error)
+          __Pyx_GOTREF(__pyx_t_1);
+        }
+        __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+
+        /* "ChronicleLogger.pyx":66
+ *             )
+ *             # NEW: Py2 compat for communicate(timeout=5): Py2 Popen.communicate() lacks timeout (Py3.3+); use version check and fallback to no timeout (or add threading if strict timeout needed)
+ *             if sys.version_info[0] >= 3 and sys.version_info[1] >= 3:             # <<<<<<<<<<<<<<
+ *                 proc.communicate(timeout=5)
+ *             else:
+*/
+        goto __pyx_L11;
+      }
+
+      /* "ChronicleLogger.pyx":69
+ *                 proc.communicate(timeout=5)
+ *             else:
+ *                 proc.communicate()  # No timeout in Py2; process may hang if sudo hangs, but non-interactive -n prevents prompts             # <<<<<<<<<<<<<<
  *             _Suroot._can_sudo_nopasswd = proc.returncode == 0
  *         except Exception:
 */
-      __pyx_t_2 = __pyx_v_proc;
-      __Pyx_INCREF(__pyx_t_2);
-      __pyx_t_6 = 0;
-      {
-        PyObject *__pyx_callargs[2 + ((CYTHON_VECTORCALL) ? 1 : 0)] = {__pyx_t_2, NULL};
-        __pyx_t_13 = __Pyx_MakeVectorcallBuilderKwds(1); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 62, __pyx_L5_error)
-        __Pyx_GOTREF(__pyx_t_13);
-        if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_timeout, __pyx_mstate_global->__pyx_int_5, __pyx_t_13, __pyx_callargs+1, 0) < 0) __PYX_ERR(0, 62, __pyx_L5_error)
-        __pyx_t_1 = __Pyx_Object_VectorcallMethod_CallFromBuilder(__pyx_mstate_global->__pyx_n_u_communicate, __pyx_callargs+__pyx_t_6, (1-__pyx_t_6) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET), __pyx_t_13);
-        __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
-        __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
-        if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 62, __pyx_L5_error)
-        __Pyx_GOTREF(__pyx_t_1);
+      /*else*/ {
+        __pyx_t_13 = __pyx_v_proc;
+        __Pyx_INCREF(__pyx_t_13);
+        __pyx_t_6 = 0;
+        {
+          PyObject *__pyx_callargs[2] = {__pyx_t_13, NULL};
+          __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_communicate, __pyx_callargs+__pyx_t_6, (1-__pyx_t_6) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+          __Pyx_XDECREF(__pyx_t_13); __pyx_t_13 = 0;
+          if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 69, __pyx_L5_error)
+          __Pyx_GOTREF(__pyx_t_1);
+        }
+        __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
       }
-      __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+      __pyx_L11:;
 
-      /* "ChronicleLogger.pyx":63
- *             )
- *             proc.communicate(timeout=5)
+      /* "ChronicleLogger.pyx":70
+ *             else:
+ *                 proc.communicate()  # No timeout in Py2; process may hang if sudo hangs, but non-interactive -n prevents prompts
  *             _Suroot._can_sudo_nopasswd = proc.returncode == 0             # <<<<<<<<<<<<<<
  *         except Exception:
  *             _Suroot._can_sudo_nopasswd = False
 */
-      __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_proc, __pyx_mstate_global->__pyx_n_u_returncode); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 63, __pyx_L5_error)
+      __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_proc, __pyx_mstate_global->__pyx_n_u_returncode); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 70, __pyx_L5_error)
       __Pyx_GOTREF(__pyx_t_1);
-      __pyx_t_13 = __Pyx_PyLong_EqObjC(__pyx_t_1, __pyx_mstate_global->__pyx_int_0, 0, 0); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 63, __pyx_L5_error)
+      __pyx_t_13 = __Pyx_PyLong_EqObjC(__pyx_t_1, __pyx_mstate_global->__pyx_int_0, 0, 0); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 70, __pyx_L5_error)
       __Pyx_GOTREF(__pyx_t_13);
       __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-      __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 63, __pyx_L5_error)
+      __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 70, __pyx_L5_error)
       __Pyx_GOTREF(__pyx_t_1);
-      if (__Pyx_PyObject_SetAttrStr(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_can_sudo_nopasswd, __pyx_t_13) < 0) __PYX_ERR(0, 63, __pyx_L5_error)
+      if (__Pyx_PyObject_SetAttrStr(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_can_sudo_nopasswd, __pyx_t_13) < 0) __PYX_ERR(0, 70, __pyx_L5_error)
       __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
       __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-      /* "ChronicleLogger.pyx":55
+      /* "ChronicleLogger.pyx":58
  *             return True
  * 
  *         try:             # <<<<<<<<<<<<<<
@@ -3595,31 +3627,31 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_4can_sudo_without_password(
     __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
     __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
 
-    /* "ChronicleLogger.pyx":64
- *             proc.communicate(timeout=5)
+    /* "ChronicleLogger.pyx":71
+ *                 proc.communicate()  # No timeout in Py2; process may hang if sudo hangs, but non-interactive -n prevents prompts
  *             _Suroot._can_sudo_nopasswd = proc.returncode == 0
  *         except Exception:             # <<<<<<<<<<<<<<
  *             _Suroot._can_sudo_nopasswd = False
  * 
 */
-    __pyx_t_14 = __Pyx_PyErr_ExceptionMatches(((PyObject *)(((PyTypeObject*)PyExc_Exception))));
-    if (__pyx_t_14) {
+    __pyx_t_15 = __Pyx_PyErr_ExceptionMatches(((PyObject *)(((PyTypeObject*)PyExc_Exception))));
+    if (__pyx_t_15) {
       __Pyx_AddTraceback("ChronicleLogger._Suroot.can_sudo_without_password", __pyx_clineno, __pyx_lineno, __pyx_filename);
-      if (__Pyx_GetException(&__pyx_t_1, &__pyx_t_13, &__pyx_t_2) < 0) __PYX_ERR(0, 64, __pyx_L7_except_error)
+      if (__Pyx_GetException(&__pyx_t_1, &__pyx_t_13, &__pyx_t_2) < 0) __PYX_ERR(0, 71, __pyx_L7_except_error)
       __Pyx_XGOTREF(__pyx_t_1);
       __Pyx_XGOTREF(__pyx_t_13);
       __Pyx_XGOTREF(__pyx_t_2);
 
-      /* "ChronicleLogger.pyx":65
+      /* "ChronicleLogger.pyx":72
  *             _Suroot._can_sudo_nopasswd = proc.returncode == 0
  *         except Exception:
  *             _Suroot._can_sudo_nopasswd = False             # <<<<<<<<<<<<<<
  * 
  *         return _Suroot._can_sudo_nopasswd
 */
-      __Pyx_GetModuleGlobalName(__pyx_t_12, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 65, __pyx_L7_except_error)
+      __Pyx_GetModuleGlobalName(__pyx_t_12, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 72, __pyx_L7_except_error)
       __Pyx_GOTREF(__pyx_t_12);
-      if (__Pyx_PyObject_SetAttrStr(__pyx_t_12, __pyx_mstate_global->__pyx_n_u_can_sudo_nopasswd, Py_False) < 0) __PYX_ERR(0, 65, __pyx_L7_except_error)
+      if (__Pyx_PyObject_SetAttrStr(__pyx_t_12, __pyx_mstate_global->__pyx_n_u_can_sudo_nopasswd, Py_False) < 0) __PYX_ERR(0, 72, __pyx_L7_except_error)
       __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
       __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
       __Pyx_XDECREF(__pyx_t_13); __pyx_t_13 = 0;
@@ -3628,7 +3660,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_4can_sudo_without_password(
     }
     goto __pyx_L7_except_error;
 
-    /* "ChronicleLogger.pyx":55
+    /* "ChronicleLogger.pyx":58
  *             return True
  * 
  *         try:             # <<<<<<<<<<<<<<
@@ -3649,7 +3681,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_4can_sudo_without_password(
     __pyx_L10_try_end:;
   }
 
-  /* "ChronicleLogger.pyx":67
+  /* "ChronicleLogger.pyx":74
  *             _Suroot._can_sudo_nopasswd = False
  * 
  *         return _Suroot._can_sudo_nopasswd             # <<<<<<<<<<<<<<
@@ -3657,20 +3689,20 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_4can_sudo_without_password(
  *     @staticmethod
 */
   __Pyx_XDECREF(__pyx_r);
-  __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 67, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 74, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  __pyx_t_13 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_can_sudo_nopasswd); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 67, __pyx_L1_error)
+  __pyx_t_13 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_can_sudo_nopasswd); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 74, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_13);
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __pyx_r = __pyx_t_13;
   __pyx_t_13 = 0;
   goto __pyx_L0;
 
-  /* "ChronicleLogger.pyx":45
+  /* "ChronicleLogger.pyx":48
  *         return _Suroot._is_root
  * 
  *     @staticmethod             # <<<<<<<<<<<<<<
- *     def can_sudo_without_password() -> bool:
+ *     def can_sudo_without_password():  # NEW: Removed -> bool type hint
  *         """Can we run 'sudo' commands without being asked for a password?"""
 */
 
@@ -3693,17 +3725,17 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_4can_sudo_without_password(
   return __pyx_r;
 }
 
-/* "ChronicleLogger.pyx":69
+/* "ChronicleLogger.pyx":76
  *         return _Suroot._can_sudo_nopasswd
  * 
  *     @staticmethod             # <<<<<<<<<<<<<<
- *     def should_use_system_paths() -> bool:
+ *     def should_use_system_paths():  # NEW: Removed -> bool type hint
  *         """
 */
 
 /* Python wrapper */
 static PyObject *__pyx_pw_15ChronicleLogger_7_Suroot_7should_use_system_paths(PyObject *__pyx_self, CYTHON_UNUSED PyObject *unused); /*proto*/
-PyDoc_STRVAR(__pyx_doc_15ChronicleLogger_7_Suroot_6should_use_system_paths, "\n        Final decision method used by ChronicleLogger.\n        Returns True \342\206\222 use /var/log and /var/<app>\n        Returns False \342\206\222 use ~/.app/<app>/log\n        ");
+PyDoc_STRVAR(__pyx_doc_15ChronicleLogger_7_Suroot_6should_use_system_paths, "\n        Final decision method used by ChronicleLogger.\n        Returns True \342\206\222 use /var/log and /var/<app>\n        Returns False \342\206\222 use ~/.app/<app>/log\n        This logic determine if the real user (root is root, sudo still comes from non-root user) \n        ");
 static PyMethodDef __pyx_mdef_15ChronicleLogger_7_Suroot_7should_use_system_paths = {"should_use_system_paths", (PyCFunction)__pyx_pw_15ChronicleLogger_7_Suroot_7should_use_system_paths, METH_NOARGS, __pyx_doc_15ChronicleLogger_7_Suroot_6should_use_system_paths};
 static PyObject *__pyx_pw_15ChronicleLogger_7_Suroot_7should_use_system_paths(PyObject *__pyx_self, CYTHON_UNUSED PyObject *unused) {
   CYTHON_UNUSED PyObject *const *__pyx_kwvalues;
@@ -3728,23 +3760,24 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_6should_use_system_paths(CY
   PyObject *__pyx_t_5 = NULL;
   size_t __pyx_t_6;
   int __pyx_t_7;
+  int __pyx_t_8;
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("should_use_system_paths", 0);
 
-  /* "ChronicleLogger.pyx":76
- *         Returns False  use ~/.app/<app>/log
+  /* "ChronicleLogger.pyx":84
+ *         This logic determine if the real user (root is root, sudo still comes from non-root user)
  *         """
- *         return _Suroot.is_root() or _Suroot.can_sudo_without_password()             # <<<<<<<<<<<<<<
+ *         return _Suroot.is_root() and not _Suroot.can_sudo_without_password()             # <<<<<<<<<<<<<<
  * 
  * # === ChronicleLogger.py ===
 */
   __Pyx_XDECREF(__pyx_r);
   __pyx_t_3 = NULL;
-  __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 76, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 84, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_4);
-  __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_is_root_2); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 76, __pyx_L1_error)
+  __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_is_root_2); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 84, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_5);
   __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
   __pyx_t_6 = 1;
@@ -3764,11 +3797,11 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_6should_use_system_paths(CY
     __pyx_t_2 = __Pyx_PyObject_FastCall(__pyx_t_5, __pyx_callargs+__pyx_t_6, (1-__pyx_t_6) | (__pyx_t_6*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
     __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
     __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-    if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 76, __pyx_L1_error)
+    if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 84, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
   }
-  __pyx_t_7 = __Pyx_PyObject_IsTrue(__pyx_t_2); if (unlikely((__pyx_t_7 < 0))) __PYX_ERR(0, 76, __pyx_L1_error)
-  if (!__pyx_t_7) {
+  __pyx_t_7 = __Pyx_PyObject_IsTrue(__pyx_t_2); if (unlikely((__pyx_t_7 < 0))) __PYX_ERR(0, 84, __pyx_L1_error)
+  if (__pyx_t_7) {
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   } else {
     __Pyx_INCREF(__pyx_t_2);
@@ -3777,9 +3810,9 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_6should_use_system_paths(CY
     goto __pyx_L3_bool_binop_done;
   }
   __pyx_t_5 = NULL;
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 76, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 84, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_can_sudo_without_password); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 76, __pyx_L1_error)
+  __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_can_sudo_without_password); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 84, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_4);
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __pyx_t_6 = 1;
@@ -3799,22 +3832,26 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_6should_use_system_paths(CY
     __pyx_t_2 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+__pyx_t_6, (1-__pyx_t_6) | (__pyx_t_6*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
     __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
     __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-    if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 76, __pyx_L1_error)
+    if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 84, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
   }
-  __Pyx_INCREF(__pyx_t_2);
-  __pyx_t_1 = __pyx_t_2;
+  __pyx_t_7 = __Pyx_PyObject_IsTrue(__pyx_t_2); if (unlikely((__pyx_t_7 < 0))) __PYX_ERR(0, 84, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+  __pyx_t_8 = (!__pyx_t_7);
+  __pyx_t_2 = __Pyx_PyBool_FromLong(__pyx_t_8); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 84, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  __pyx_t_1 = __pyx_t_2;
+  __pyx_t_2 = 0;
   __pyx_L3_bool_binop_done:;
   __pyx_r = __pyx_t_1;
   __pyx_t_1 = 0;
   goto __pyx_L0;
 
-  /* "ChronicleLogger.pyx":69
+  /* "ChronicleLogger.pyx":76
  *         return _Suroot._can_sudo_nopasswd
  * 
  *     @staticmethod             # <<<<<<<<<<<<<<
- *     def should_use_system_paths() -> bool:
+ *     def should_use_system_paths():  # NEW: Removed -> bool type hint
  *         """
 */
 
@@ -3833,7 +3870,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_7_Suroot_6should_use_system_paths(CY
   return __pyx_r;
 }
 
-/* "ChronicleLogger.pyx":112
+/* "ChronicleLogger.pyx":124
  *     LOG_REMOVAL_DAYS = 30
  * 
  *     def __init__(self, logname=b"app", logdir=b"", basedir=b""):             # <<<<<<<<<<<<<<
@@ -3883,59 +3920,59 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   {
     PyObject ** const __pyx_pyargnames[] = {&__pyx_mstate_global->__pyx_n_u_self,&__pyx_mstate_global->__pyx_n_u_logname,&__pyx_mstate_global->__pyx_n_u_logdir,&__pyx_mstate_global->__pyx_n_u_basedir,0};
     const Py_ssize_t __pyx_kwds_len = (__pyx_kwds) ? __Pyx_NumKwargs_FASTCALL(__pyx_kwds) : 0;
-    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 112, __pyx_L3_error)
+    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 124, __pyx_L3_error)
     if (__pyx_kwds_len > 0) {
       switch (__pyx_nargs) {
         case  4:
         values[3] = __Pyx_ArgRef_FASTCALL(__pyx_args, 3);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[3])) __PYX_ERR(0, 112, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[3])) __PYX_ERR(0, 124, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  3:
         values[2] = __Pyx_ArgRef_FASTCALL(__pyx_args, 2);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[2])) __PYX_ERR(0, 112, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[2])) __PYX_ERR(0, 124, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  2:
         values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 112, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 124, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 112, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 124, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  0: break;
         default: goto __pyx_L5_argtuple_error;
       }
       const Py_ssize_t kwd_pos_args = __pyx_nargs;
-      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "__init__", 0) < 0) __PYX_ERR(0, 112, __pyx_L3_error)
+      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "__init__", 0) < 0) __PYX_ERR(0, 124, __pyx_L3_error)
       if (!values[1]) values[1] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_n_b_app)));
-      if (!values[2]) values[2] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_kp_b__2)));
-      if (!values[3]) values[3] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_kp_b__2)));
+      if (!values[2]) values[2] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_kp_b_)));
+      if (!values[3]) values[3] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_kp_b_)));
       for (Py_ssize_t i = __pyx_nargs; i < 1; i++) {
-        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("__init__", 0, 1, 4, i); __PYX_ERR(0, 112, __pyx_L3_error) }
+        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("__init__", 0, 1, 4, i); __PYX_ERR(0, 124, __pyx_L3_error) }
       }
     } else {
       switch (__pyx_nargs) {
         case  4:
         values[3] = __Pyx_ArgRef_FASTCALL(__pyx_args, 3);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[3])) __PYX_ERR(0, 112, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[3])) __PYX_ERR(0, 124, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  3:
         values[2] = __Pyx_ArgRef_FASTCALL(__pyx_args, 2);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[2])) __PYX_ERR(0, 112, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[2])) __PYX_ERR(0, 124, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  2:
         values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 112, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 124, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 112, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 124, __pyx_L3_error)
         break;
         default: goto __pyx_L5_argtuple_error;
       }
       if (!values[1]) values[1] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_n_b_app)));
-      if (!values[2]) values[2] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_kp_b__2)));
-      if (!values[3]) values[3] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_kp_b__2)));
+      if (!values[2]) values[2] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_kp_b_)));
+      if (!values[3]) values[3] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_kp_b_)));
     }
     __pyx_v_self = values[0];
     __pyx_v_logname = values[1];
@@ -3944,7 +3981,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("__init__", 0, 1, 4, __pyx_nargs); __PYX_ERR(0, 112, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("__init__", 0, 1, 4, __pyx_nargs); __PYX_ERR(0, 124, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -3981,34 +4018,34 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger___init__(CYTHON_UN
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("__init__", 0);
 
-  /* "ChronicleLogger.pyx":113
+  /* "ChronicleLogger.pyx":125
  * 
  *     def __init__(self, logname=b"app", logdir=b"", basedir=b""):
  *         self.__logname__ = None             # <<<<<<<<<<<<<<
  *         self.__basedir__ = None
  *         self.__logdir__ = None
 */
-  if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logname_2, Py_None) < 0) __PYX_ERR(0, 113, __pyx_L1_error)
+  if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logname_2, Py_None) < 0) __PYX_ERR(0, 125, __pyx_L1_error)
 
-  /* "ChronicleLogger.pyx":114
+  /* "ChronicleLogger.pyx":126
  *     def __init__(self, logname=b"app", logdir=b"", basedir=b""):
  *         self.__logname__ = None
  *         self.__basedir__ = None             # <<<<<<<<<<<<<<
  *         self.__logdir__ = None
  *         self.__old_logfile_path__ = ctypes.c_char_p(b"")
 */
-  if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_basedir_2, Py_None) < 0) __PYX_ERR(0, 114, __pyx_L1_error)
+  if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_basedir_2, Py_None) < 0) __PYX_ERR(0, 126, __pyx_L1_error)
 
-  /* "ChronicleLogger.pyx":115
+  /* "ChronicleLogger.pyx":127
  *         self.__logname__ = None
  *         self.__basedir__ = None
  *         self.__logdir__ = None             # <<<<<<<<<<<<<<
  *         self.__old_logfile_path__ = ctypes.c_char_p(b"")
  *         self.__is_python__ = None
 */
-  if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2, Py_None) < 0) __PYX_ERR(0, 115, __pyx_L1_error)
+  if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2, Py_None) < 0) __PYX_ERR(0, 127, __pyx_L1_error)
 
-  /* "ChronicleLogger.pyx":116
+  /* "ChronicleLogger.pyx":128
  *         self.__basedir__ = None
  *         self.__logdir__ = None
  *         self.__old_logfile_path__ = ctypes.c_char_p(b"")             # <<<<<<<<<<<<<<
@@ -4016,9 +4053,9 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger___init__(CYTHON_UN
  * 
 */
   __pyx_t_2 = NULL;
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_ctypes); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 116, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_ctypes); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 128, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_c_char_p); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 116, __pyx_L1_error)
+  __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_c_char_p); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 128, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_4);
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __pyx_t_5 = 1;
@@ -4034,33 +4071,33 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger___init__(CYTHON_UN
   }
   #endif
   {
-    PyObject *__pyx_callargs[2] = {__pyx_t_2, __pyx_mstate_global->__pyx_kp_b__2};
+    PyObject *__pyx_callargs[2] = {__pyx_t_2, __pyx_mstate_global->__pyx_kp_b_};
     __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (__pyx_t_5*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
     __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
     __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 116, __pyx_L1_error)
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 128, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
   }
-  if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_old_logfile_path, __pyx_t_1) < 0) __PYX_ERR(0, 116, __pyx_L1_error)
+  if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_old_logfile_path, __pyx_t_1) < 0) __PYX_ERR(0, 128, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-  /* "ChronicleLogger.pyx":117
+  /* "ChronicleLogger.pyx":129
  *         self.__logdir__ = None
  *         self.__old_logfile_path__ = ctypes.c_char_p(b"")
  *         self.__is_python__ = None             # <<<<<<<<<<<<<<
  * 
  *         if not logname or logname in (b"", ""):
 */
-  if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_is_python, Py_None) < 0) __PYX_ERR(0, 117, __pyx_L1_error)
+  if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_is_python, Py_None) < 0) __PYX_ERR(0, 129, __pyx_L1_error)
 
-  /* "ChronicleLogger.pyx":119
+  /* "ChronicleLogger.pyx":131
  *         self.__is_python__ = None
  * 
  *         if not logname or logname in (b"", ""):             # <<<<<<<<<<<<<<
  *             return
  * 
 */
-  __pyx_t_7 = __Pyx_PyObject_IsTrue(__pyx_v_logname); if (unlikely((__pyx_t_7 < 0))) __PYX_ERR(0, 119, __pyx_L1_error)
+  __pyx_t_7 = __Pyx_PyObject_IsTrue(__pyx_v_logname); if (unlikely((__pyx_t_7 < 0))) __PYX_ERR(0, 131, __pyx_L1_error)
   __pyx_t_8 = (!__pyx_t_7);
   if (!__pyx_t_8) {
   } else {
@@ -4069,13 +4106,13 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger___init__(CYTHON_UN
   }
   __Pyx_INCREF(__pyx_v_logname);
   __pyx_t_1 = __pyx_v_logname;
-  __pyx_t_7 = (__Pyx_PyBytes_Equals(__pyx_t_1, __pyx_mstate_global->__pyx_kp_b__2, Py_EQ)); if (unlikely((__pyx_t_7 < 0))) __PYX_ERR(0, 119, __pyx_L1_error)
+  __pyx_t_7 = (__Pyx_PyBytes_Equals(__pyx_t_1, __pyx_mstate_global->__pyx_kp_b_, Py_EQ)); if (unlikely((__pyx_t_7 < 0))) __PYX_ERR(0, 131, __pyx_L1_error)
   if (!__pyx_t_7) {
   } else {
     __pyx_t_8 = __pyx_t_7;
     goto __pyx_L6_bool_binop_done;
   }
-  __pyx_t_7 = (__Pyx_PyUnicode_Equals(__pyx_t_1, __pyx_mstate_global->__pyx_kp_u__2, Py_EQ)); if (unlikely((__pyx_t_7 < 0))) __PYX_ERR(0, 119, __pyx_L1_error)
+  __pyx_t_7 = (__Pyx_PyUnicode_Equals(__pyx_t_1, __pyx_mstate_global->__pyx_kp_u_, Py_EQ)); if (unlikely((__pyx_t_7 < 0))) __PYX_ERR(0, 131, __pyx_L1_error)
   __pyx_t_8 = __pyx_t_7;
   __pyx_L6_bool_binop_done:;
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
@@ -4084,7 +4121,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger___init__(CYTHON_UN
   __pyx_L4_bool_binop_done:;
   if (__pyx_t_6) {
 
-    /* "ChronicleLogger.pyx":120
+    /* "ChronicleLogger.pyx":132
  * 
  *         if not logname or logname in (b"", ""):
  *             return             # <<<<<<<<<<<<<<
@@ -4095,7 +4132,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger___init__(CYTHON_UN
     __pyx_r = Py_None; __Pyx_INCREF(Py_None);
     goto __pyx_L0;
 
-    /* "ChronicleLogger.pyx":119
+    /* "ChronicleLogger.pyx":131
  *         self.__is_python__ = None
  * 
  *         if not logname or logname in (b"", ""):             # <<<<<<<<<<<<<<
@@ -4104,7 +4141,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger___init__(CYTHON_UN
 */
   }
 
-  /* "ChronicleLogger.pyx":122
+  /* "ChronicleLogger.pyx":134
  *             return
  * 
  *         self.logName(logname)             # <<<<<<<<<<<<<<
@@ -4118,22 +4155,22 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger___init__(CYTHON_UN
     PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_v_logname};
     __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_logName, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
     __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 122, __pyx_L1_error)
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 134, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
   }
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-  /* "ChronicleLogger.pyx":123
+  /* "ChronicleLogger.pyx":135
  * 
  *         self.logName(logname)
  *         if logdir:             # <<<<<<<<<<<<<<
  *             self.logDir(logdir)
  *         else:
 */
-  __pyx_t_6 = __Pyx_PyObject_IsTrue(__pyx_v_logdir); if (unlikely((__pyx_t_6 < 0))) __PYX_ERR(0, 123, __pyx_L1_error)
+  __pyx_t_6 = __Pyx_PyObject_IsTrue(__pyx_v_logdir); if (unlikely((__pyx_t_6 < 0))) __PYX_ERR(0, 135, __pyx_L1_error)
   if (__pyx_t_6) {
 
-    /* "ChronicleLogger.pyx":124
+    /* "ChronicleLogger.pyx":136
  *         self.logName(logname)
  *         if logdir:
  *             self.logDir(logdir)             # <<<<<<<<<<<<<<
@@ -4147,12 +4184,12 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger___init__(CYTHON_UN
       PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_v_logdir};
       __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_logDir, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
       __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 124, __pyx_L1_error)
+      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 136, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
     }
     __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-    /* "ChronicleLogger.pyx":123
+    /* "ChronicleLogger.pyx":135
  * 
  *         self.logName(logname)
  *         if logdir:             # <<<<<<<<<<<<<<
@@ -4162,44 +4199,44 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger___init__(CYTHON_UN
     goto __pyx_L8;
   }
 
-  /* "ChronicleLogger.pyx":126
+  /* "ChronicleLogger.pyx":138
  *             self.logDir(logdir)
  *         else:
  *             self.logDir("")  # triggers default path + directory creation             # <<<<<<<<<<<<<<
- *         self.baseDir(basedir if basedir else "")
- * 
+ *         # After this, the logDir() should return the log path
+ *         # for root it's should starts with /etc/appname/log/...
 */
   /*else*/ {
     __pyx_t_4 = __pyx_v_self;
     __Pyx_INCREF(__pyx_t_4);
     __pyx_t_5 = 0;
     {
-      PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_mstate_global->__pyx_kp_u__2};
+      PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_mstate_global->__pyx_kp_u_};
       __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_logDir, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
       __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 126, __pyx_L1_error)
+      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 138, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
     }
     __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   }
   __pyx_L8:;
 
-  /* "ChronicleLogger.pyx":127
- *         else:
- *             self.logDir("")  # triggers default path + directory creation
+  /* "ChronicleLogger.pyx":142
+ *         # for root it's should starts with /etc/appname/log/...
+ *         # for non-root (no matter is sudo or not ) with ~/.app/appname/log
  *         self.baseDir(basedir if basedir else "")             # <<<<<<<<<<<<<<
  * 
  *         self.__current_logfile_path__ = self._get_log_filename()
 */
   __pyx_t_4 = __pyx_v_self;
   __Pyx_INCREF(__pyx_t_4);
-  __pyx_t_6 = __Pyx_PyObject_IsTrue(__pyx_v_basedir); if (unlikely((__pyx_t_6 < 0))) __PYX_ERR(0, 127, __pyx_L1_error)
+  __pyx_t_6 = __Pyx_PyObject_IsTrue(__pyx_v_basedir); if (unlikely((__pyx_t_6 < 0))) __PYX_ERR(0, 142, __pyx_L1_error)
   if (__pyx_t_6) {
     __Pyx_INCREF(__pyx_v_basedir);
     __pyx_t_2 = __pyx_v_basedir;
   } else {
-    __Pyx_INCREF(__pyx_mstate_global->__pyx_kp_u__2);
-    __pyx_t_2 = __pyx_mstate_global->__pyx_kp_u__2;
+    __Pyx_INCREF(__pyx_mstate_global->__pyx_kp_u_);
+    __pyx_t_2 = __pyx_mstate_global->__pyx_kp_u_;
   }
   __pyx_t_5 = 0;
   {
@@ -4207,12 +4244,12 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger___init__(CYTHON_UN
     __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_baseDir, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
     __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 127, __pyx_L1_error)
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 142, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
   }
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-  /* "ChronicleLogger.pyx":129
+  /* "ChronicleLogger.pyx":144
  *         self.baseDir(basedir if basedir else "")
  * 
  *         self.__current_logfile_path__ = self._get_log_filename()             # <<<<<<<<<<<<<<
@@ -4226,13 +4263,13 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger___init__(CYTHON_UN
     PyObject *__pyx_callargs[2] = {__pyx_t_2, NULL};
     __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_get_log_filename, __pyx_callargs+__pyx_t_5, (1-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
     __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 129, __pyx_L1_error)
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 144, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
   }
-  if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_current_logfile_path, __pyx_t_1) < 0) __PYX_ERR(0, 129, __pyx_L1_error)
+  if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_current_logfile_path, __pyx_t_1) < 0) __PYX_ERR(0, 144, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-  /* "ChronicleLogger.pyx":130
+  /* "ChronicleLogger.pyx":145
  * 
  *         self.__current_logfile_path__ = self._get_log_filename()
  *         self.ensure_directory_exists(self.__logdir__)             # <<<<<<<<<<<<<<
@@ -4241,7 +4278,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger___init__(CYTHON_UN
 */
   __pyx_t_2 = __pyx_v_self;
   __Pyx_INCREF(__pyx_t_2);
-  __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 130, __pyx_L1_error)
+  __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 145, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_4);
   __pyx_t_5 = 0;
   {
@@ -4249,12 +4286,12 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger___init__(CYTHON_UN
     __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_ensure_directory_exists, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
     __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
     __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 130, __pyx_L1_error)
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 145, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
   }
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-  /* "ChronicleLogger.pyx":132
+  /* "ChronicleLogger.pyx":147
  *         self.ensure_directory_exists(self.__logdir__)
  * 
  *         if self._has_write_permission(self.__current_logfile_path__):             # <<<<<<<<<<<<<<
@@ -4263,7 +4300,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger___init__(CYTHON_UN
 */
   __pyx_t_4 = __pyx_v_self;
   __Pyx_INCREF(__pyx_t_4);
-  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_current_logfile_path); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 132, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_current_logfile_path); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 147, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __pyx_t_5 = 0;
   {
@@ -4271,14 +4308,14 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger___init__(CYTHON_UN
     __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_has_write_permission, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
     __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 132, __pyx_L1_error)
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 147, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
   }
-  __pyx_t_6 = __Pyx_PyObject_IsTrue(__pyx_t_1); if (unlikely((__pyx_t_6 < 0))) __PYX_ERR(0, 132, __pyx_L1_error)
+  __pyx_t_6 = __Pyx_PyObject_IsTrue(__pyx_t_1); if (unlikely((__pyx_t_6 < 0))) __PYX_ERR(0, 147, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   if (__pyx_t_6) {
 
-    /* "ChronicleLogger.pyx":133
+    /* "ChronicleLogger.pyx":148
  * 
  *         if self._has_write_permission(self.__current_logfile_path__):
  *             self.write_to_file("\n")             # <<<<<<<<<<<<<<
@@ -4289,15 +4326,15 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger___init__(CYTHON_UN
     __Pyx_INCREF(__pyx_t_2);
     __pyx_t_5 = 0;
     {
-      PyObject *__pyx_callargs[2] = {__pyx_t_2, __pyx_mstate_global->__pyx_kp_u__3};
+      PyObject *__pyx_callargs[2] = {__pyx_t_2, __pyx_mstate_global->__pyx_kp_u__2};
       __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_write_to_file, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
       __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
-      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 133, __pyx_L1_error)
+      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 148, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
     }
     __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-    /* "ChronicleLogger.pyx":132
+    /* "ChronicleLogger.pyx":147
  *         self.ensure_directory_exists(self.__logdir__)
  * 
  *         if self._has_write_permission(self.__current_logfile_path__):             # <<<<<<<<<<<<<<
@@ -4306,7 +4343,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger___init__(CYTHON_UN
 */
   }
 
-  /* "ChronicleLogger.pyx":112
+  /* "ChronicleLogger.pyx":124
  *     LOG_REMOVAL_DAYS = 30
  * 
  *     def __init__(self, logname=b"app", logdir=b"", basedir=b""):             # <<<<<<<<<<<<<<
@@ -4330,12 +4367,12 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger___init__(CYTHON_UN
   return __pyx_r;
 }
 
-/* "ChronicleLogger.pyx":135
+/* "ChronicleLogger.pyx":150
  *             self.write_to_file("\n")
  * 
  *     def strToByte(self, value):             # <<<<<<<<<<<<<<
  *         if isinstance(value, basestring):
- *             return value.encode()
+ *             return value.encode('utf-8')  # NEW: Explicit utf-8 for Py3 bytes consistency
 */
 
 /* Python wrapper */
@@ -4378,39 +4415,39 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   {
     PyObject ** const __pyx_pyargnames[] = {&__pyx_mstate_global->__pyx_n_u_self,&__pyx_mstate_global->__pyx_n_u_value,0};
     const Py_ssize_t __pyx_kwds_len = (__pyx_kwds) ? __Pyx_NumKwargs_FASTCALL(__pyx_kwds) : 0;
-    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 135, __pyx_L3_error)
+    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 150, __pyx_L3_error)
     if (__pyx_kwds_len > 0) {
       switch (__pyx_nargs) {
         case  2:
         values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 135, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 150, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 135, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 150, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  0: break;
         default: goto __pyx_L5_argtuple_error;
       }
       const Py_ssize_t kwd_pos_args = __pyx_nargs;
-      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "strToByte", 0) < 0) __PYX_ERR(0, 135, __pyx_L3_error)
+      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "strToByte", 0) < 0) __PYX_ERR(0, 150, __pyx_L3_error)
       for (Py_ssize_t i = __pyx_nargs; i < 2; i++) {
-        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("strToByte", 1, 2, 2, i); __PYX_ERR(0, 135, __pyx_L3_error) }
+        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("strToByte", 1, 2, 2, i); __PYX_ERR(0, 150, __pyx_L3_error) }
       }
     } else if (unlikely(__pyx_nargs != 2)) {
       goto __pyx_L5_argtuple_error;
     } else {
       values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 135, __pyx_L3_error)
+      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 150, __pyx_L3_error)
       values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 135, __pyx_L3_error)
+      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 150, __pyx_L3_error)
     }
     __pyx_v_self = values[0];
     __pyx_v_value = values[1];
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("strToByte", 1, 2, 2, __pyx_nargs); __PYX_ERR(0, 135, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("strToByte", 1, 2, 2, __pyx_nargs); __PYX_ERR(0, 150, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -4442,28 +4479,29 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_2strToByte(CYTHON_
   PyObject *__pyx_t_6 = NULL;
   PyObject *__pyx_t_7 = NULL;
   PyObject *__pyx_t_8 = NULL;
+  PyObject *__pyx_t_9 = NULL;
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("strToByte", 0);
 
-  /* "ChronicleLogger.pyx":136
+  /* "ChronicleLogger.pyx":151
  * 
  *     def strToByte(self, value):
  *         if isinstance(value, basestring):             # <<<<<<<<<<<<<<
- *             return value.encode()
+ *             return value.encode('utf-8')  # NEW: Explicit utf-8 for Py3 bytes consistency
  *         elif value is None or isinstance(value, bytes):
 */
-  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_basestring); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 136, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_basestring); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 151, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = PyObject_IsInstance(__pyx_v_value, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 136, __pyx_L1_error)
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_value, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 151, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   if (__pyx_t_2) {
 
-    /* "ChronicleLogger.pyx":137
+    /* "ChronicleLogger.pyx":152
  *     def strToByte(self, value):
  *         if isinstance(value, basestring):
- *             return value.encode()             # <<<<<<<<<<<<<<
+ *             return value.encode('utf-8')  # NEW: Explicit utf-8 for Py3 bytes consistency             # <<<<<<<<<<<<<<
  *         elif value is None or isinstance(value, bytes):
  *             return value
 */
@@ -4472,31 +4510,31 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_2strToByte(CYTHON_
     __Pyx_INCREF(__pyx_t_3);
     __pyx_t_4 = 0;
     {
-      PyObject *__pyx_callargs[2] = {__pyx_t_3, NULL};
-      __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_encode, __pyx_callargs+__pyx_t_4, (1-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+      PyObject *__pyx_callargs[2] = {__pyx_t_3, __pyx_mstate_global->__pyx_kp_u_utf_8};
+      __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_encode, __pyx_callargs+__pyx_t_4, (2-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
       __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
-      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 137, __pyx_L1_error)
+      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 152, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
     }
     __pyx_r = __pyx_t_1;
     __pyx_t_1 = 0;
     goto __pyx_L0;
 
-    /* "ChronicleLogger.pyx":136
+    /* "ChronicleLogger.pyx":151
  * 
  *     def strToByte(self, value):
  *         if isinstance(value, basestring):             # <<<<<<<<<<<<<<
- *             return value.encode()
+ *             return value.encode('utf-8')  # NEW: Explicit utf-8 for Py3 bytes consistency
  *         elif value is None or isinstance(value, bytes):
 */
   }
 
-  /* "ChronicleLogger.pyx":138
+  /* "ChronicleLogger.pyx":153
  *         if isinstance(value, basestring):
- *             return value.encode()
+ *             return value.encode('utf-8')  # NEW: Explicit utf-8 for Py3 bytes consistency
  *         elif value is None or isinstance(value, bytes):             # <<<<<<<<<<<<<<
  *             return value
- *         raise TypeError(f"Expected str/bytes/None, got {type(value).__name__}")
+ *         # NEW: Replaced f-string with .format() for Py2 compat
 */
   __pyx_t_5 = (__pyx_v_value == Py_None);
   if (!__pyx_t_5) {
@@ -4509,45 +4547,50 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_2strToByte(CYTHON_
   __pyx_L4_bool_binop_done:;
   if (__pyx_t_2) {
 
-    /* "ChronicleLogger.pyx":139
- *             return value.encode()
+    /* "ChronicleLogger.pyx":154
+ *             return value.encode('utf-8')  # NEW: Explicit utf-8 for Py3 bytes consistency
  *         elif value is None or isinstance(value, bytes):
  *             return value             # <<<<<<<<<<<<<<
- *         raise TypeError(f"Expected str/bytes/None, got {type(value).__name__}")
- * 
+ *         # NEW: Replaced f-string with .format() for Py2 compat
+ *         raise TypeError("Expected str/bytes/None, got {0}".format(type(value).__name__))
 */
     __Pyx_XDECREF(__pyx_r);
     __Pyx_INCREF(__pyx_v_value);
     __pyx_r = __pyx_v_value;
     goto __pyx_L0;
 
-    /* "ChronicleLogger.pyx":138
+    /* "ChronicleLogger.pyx":153
  *         if isinstance(value, basestring):
- *             return value.encode()
+ *             return value.encode('utf-8')  # NEW: Explicit utf-8 for Py3 bytes consistency
  *         elif value is None or isinstance(value, bytes):             # <<<<<<<<<<<<<<
  *             return value
- *         raise TypeError(f"Expected str/bytes/None, got {type(value).__name__}")
+ *         # NEW: Replaced f-string with .format() for Py2 compat
 */
   }
 
-  /* "ChronicleLogger.pyx":140
- *         elif value is None or isinstance(value, bytes):
+  /* "ChronicleLogger.pyx":156
  *             return value
- *         raise TypeError(f"Expected str/bytes/None, got {type(value).__name__}")             # <<<<<<<<<<<<<<
+ *         # NEW: Replaced f-string with .format() for Py2 compat
+ *         raise TypeError("Expected str/bytes/None, got {0}".format(type(value).__name__))             # <<<<<<<<<<<<<<
  * 
  *     def byteToStr(self, value):
 */
   __pyx_t_3 = NULL;
   __Pyx_INCREF(__pyx_builtin_TypeError);
   __pyx_t_6 = __pyx_builtin_TypeError; 
-  __pyx_t_7 = __Pyx_PyObject_GetAttrStr(((PyObject *)Py_TYPE(__pyx_v_value)), __pyx_mstate_global->__pyx_n_u_name); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 140, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_7);
-  __pyx_t_8 = __Pyx_PyObject_FormatSimple(__pyx_t_7, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 140, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_8);
-  __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
-  __pyx_t_7 = __Pyx_PyUnicode_Concat(__pyx_mstate_global->__pyx_kp_u_Expected_str_bytes_None_got, __pyx_t_8); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 140, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_7);
-  __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
+  __pyx_t_8 = __pyx_mstate_global->__pyx_kp_u_Expected_str_bytes_None_got_0;
+  __Pyx_INCREF(__pyx_t_8);
+  __pyx_t_9 = __Pyx_PyObject_GetAttrStr(((PyObject *)Py_TYPE(__pyx_v_value)), __pyx_mstate_global->__pyx_n_u_name); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 156, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_9);
+  __pyx_t_4 = 0;
+  {
+    PyObject *__pyx_callargs[2] = {__pyx_t_8, __pyx_t_9};
+    __pyx_t_7 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_format, __pyx_callargs+__pyx_t_4, (2-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+    __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
+    __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
+    if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 156, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_7);
+  }
   __pyx_t_4 = 1;
   {
     PyObject *__pyx_callargs[2] = {__pyx_t_3, __pyx_t_7};
@@ -4555,19 +4598,19 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_2strToByte(CYTHON_
     __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
     __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
     __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 140, __pyx_L1_error)
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 156, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
   }
   __Pyx_Raise(__pyx_t_1, 0, 0, 0);
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __PYX_ERR(0, 140, __pyx_L1_error)
+  __PYX_ERR(0, 156, __pyx_L1_error)
 
-  /* "ChronicleLogger.pyx":135
+  /* "ChronicleLogger.pyx":150
  *             self.write_to_file("\n")
  * 
  *     def strToByte(self, value):             # <<<<<<<<<<<<<<
  *         if isinstance(value, basestring):
- *             return value.encode()
+ *             return value.encode('utf-8')  # NEW: Explicit utf-8 for Py3 bytes consistency
 */
 
   /* function exit code */
@@ -4577,6 +4620,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_2strToByte(CYTHON_
   __Pyx_XDECREF(__pyx_t_6);
   __Pyx_XDECREF(__pyx_t_7);
   __Pyx_XDECREF(__pyx_t_8);
+  __Pyx_XDECREF(__pyx_t_9);
   __Pyx_AddTraceback("ChronicleLogger.ChronicleLogger.strToByte", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = NULL;
   __pyx_L0:;
@@ -4585,8 +4629,8 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_2strToByte(CYTHON_
   return __pyx_r;
 }
 
-/* "ChronicleLogger.pyx":142
- *         raise TypeError(f"Expected str/bytes/None, got {type(value).__name__}")
+/* "ChronicleLogger.pyx":158
+ *         raise TypeError("Expected str/bytes/None, got {0}".format(type(value).__name__))
  * 
  *     def byteToStr(self, value):             # <<<<<<<<<<<<<<
  *         if value is None or isinstance(value, basestring):
@@ -4633,39 +4677,39 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   {
     PyObject ** const __pyx_pyargnames[] = {&__pyx_mstate_global->__pyx_n_u_self,&__pyx_mstate_global->__pyx_n_u_value,0};
     const Py_ssize_t __pyx_kwds_len = (__pyx_kwds) ? __Pyx_NumKwargs_FASTCALL(__pyx_kwds) : 0;
-    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 142, __pyx_L3_error)
+    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 158, __pyx_L3_error)
     if (__pyx_kwds_len > 0) {
       switch (__pyx_nargs) {
         case  2:
         values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 142, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 158, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 142, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 158, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  0: break;
         default: goto __pyx_L5_argtuple_error;
       }
       const Py_ssize_t kwd_pos_args = __pyx_nargs;
-      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "byteToStr", 0) < 0) __PYX_ERR(0, 142, __pyx_L3_error)
+      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "byteToStr", 0) < 0) __PYX_ERR(0, 158, __pyx_L3_error)
       for (Py_ssize_t i = __pyx_nargs; i < 2; i++) {
-        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("byteToStr", 1, 2, 2, i); __PYX_ERR(0, 142, __pyx_L3_error) }
+        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("byteToStr", 1, 2, 2, i); __PYX_ERR(0, 158, __pyx_L3_error) }
       }
     } else if (unlikely(__pyx_nargs != 2)) {
       goto __pyx_L5_argtuple_error;
     } else {
       values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 142, __pyx_L3_error)
+      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 158, __pyx_L3_error)
       values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 142, __pyx_L3_error)
+      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 158, __pyx_L3_error)
     }
     __pyx_v_self = values[0];
     __pyx_v_value = values[1];
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("byteToStr", 1, 2, 2, __pyx_nargs); __PYX_ERR(0, 142, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("byteToStr", 1, 2, 2, __pyx_nargs); __PYX_ERR(0, 158, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -4697,12 +4741,13 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_4byteToStr(CYTHON_
   PyObject *__pyx_t_6 = NULL;
   PyObject *__pyx_t_7 = NULL;
   PyObject *__pyx_t_8 = NULL;
+  PyObject *__pyx_t_9 = NULL;
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("byteToStr", 0);
 
-  /* "ChronicleLogger.pyx":143
+  /* "ChronicleLogger.pyx":159
  * 
  *     def byteToStr(self, value):
  *         if value is None or isinstance(value, basestring):             # <<<<<<<<<<<<<<
@@ -4715,27 +4760,27 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_4byteToStr(CYTHON_
     __pyx_t_1 = __pyx_t_2;
     goto __pyx_L4_bool_binop_done;
   }
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_basestring); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 143, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_basestring); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 159, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_2 = PyObject_IsInstance(__pyx_v_value, __pyx_t_3); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 143, __pyx_L1_error)
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_value, __pyx_t_3); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 159, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __pyx_t_1 = __pyx_t_2;
   __pyx_L4_bool_binop_done:;
   if (__pyx_t_1) {
 
-    /* "ChronicleLogger.pyx":144
+    /* "ChronicleLogger.pyx":160
  *     def byteToStr(self, value):
  *         if value is None or isinstance(value, basestring):
  *             return value             # <<<<<<<<<<<<<<
  *         elif isinstance(value, bytes):
- *             return value.decode()
+ *             return value.decode('utf-8')  # NEW: Explicit utf-8 for Py2/3 consistency
 */
     __Pyx_XDECREF(__pyx_r);
     __Pyx_INCREF(__pyx_v_value);
     __pyx_r = __pyx_v_value;
     goto __pyx_L0;
 
-    /* "ChronicleLogger.pyx":143
+    /* "ChronicleLogger.pyx":159
  * 
  *     def byteToStr(self, value):
  *         if value is None or isinstance(value, basestring):             # <<<<<<<<<<<<<<
@@ -4744,65 +4789,70 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_4byteToStr(CYTHON_
 */
   }
 
-  /* "ChronicleLogger.pyx":145
+  /* "ChronicleLogger.pyx":161
  *         if value is None or isinstance(value, basestring):
  *             return value
  *         elif isinstance(value, bytes):             # <<<<<<<<<<<<<<
- *             return value.decode()
- *         raise TypeError(f"Expected str/bytes/None, got {type(value).__name__}")
+ *             return value.decode('utf-8')  # NEW: Explicit utf-8 for Py2/3 consistency
+ *         # NEW: Replaced f-string with .format()
 */
   __pyx_t_1 = PyBytes_Check(__pyx_v_value); 
   if (__pyx_t_1) {
 
-    /* "ChronicleLogger.pyx":146
+    /* "ChronicleLogger.pyx":162
  *             return value
  *         elif isinstance(value, bytes):
- *             return value.decode()             # <<<<<<<<<<<<<<
- *         raise TypeError(f"Expected str/bytes/None, got {type(value).__name__}")
- * 
+ *             return value.decode('utf-8')  # NEW: Explicit utf-8 for Py2/3 consistency             # <<<<<<<<<<<<<<
+ *         # NEW: Replaced f-string with .format()
+ *         raise TypeError("Expected str/bytes/None, got {0}".format(type(value).__name__))
 */
     __Pyx_XDECREF(__pyx_r);
     __pyx_t_4 = __pyx_v_value;
     __Pyx_INCREF(__pyx_t_4);
     __pyx_t_5 = 0;
     {
-      PyObject *__pyx_callargs[2] = {__pyx_t_4, NULL};
-      __pyx_t_3 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_decode, __pyx_callargs+__pyx_t_5, (1-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+      PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_mstate_global->__pyx_kp_u_utf_8};
+      __pyx_t_3 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_decode, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
       __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-      if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 146, __pyx_L1_error)
+      if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 162, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_3);
     }
     __pyx_r = __pyx_t_3;
     __pyx_t_3 = 0;
     goto __pyx_L0;
 
-    /* "ChronicleLogger.pyx":145
+    /* "ChronicleLogger.pyx":161
  *         if value is None or isinstance(value, basestring):
  *             return value
  *         elif isinstance(value, bytes):             # <<<<<<<<<<<<<<
- *             return value.decode()
- *         raise TypeError(f"Expected str/bytes/None, got {type(value).__name__}")
+ *             return value.decode('utf-8')  # NEW: Explicit utf-8 for Py2/3 consistency
+ *         # NEW: Replaced f-string with .format()
 */
   }
 
-  /* "ChronicleLogger.pyx":147
- *         elif isinstance(value, bytes):
- *             return value.decode()
- *         raise TypeError(f"Expected str/bytes/None, got {type(value).__name__}")             # <<<<<<<<<<<<<<
+  /* "ChronicleLogger.pyx":164
+ *             return value.decode('utf-8')  # NEW: Explicit utf-8 for Py2/3 consistency
+ *         # NEW: Replaced f-string with .format()
+ *         raise TypeError("Expected str/bytes/None, got {0}".format(type(value).__name__))             # <<<<<<<<<<<<<<
  * 
  *     def inPython(self):
 */
   __pyx_t_4 = NULL;
   __Pyx_INCREF(__pyx_builtin_TypeError);
   __pyx_t_6 = __pyx_builtin_TypeError; 
-  __pyx_t_7 = __Pyx_PyObject_GetAttrStr(((PyObject *)Py_TYPE(__pyx_v_value)), __pyx_mstate_global->__pyx_n_u_name); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 147, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_7);
-  __pyx_t_8 = __Pyx_PyObject_FormatSimple(__pyx_t_7, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 147, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_8);
-  __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
-  __pyx_t_7 = __Pyx_PyUnicode_Concat(__pyx_mstate_global->__pyx_kp_u_Expected_str_bytes_None_got, __pyx_t_8); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 147, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_7);
-  __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
+  __pyx_t_8 = __pyx_mstate_global->__pyx_kp_u_Expected_str_bytes_None_got_0;
+  __Pyx_INCREF(__pyx_t_8);
+  __pyx_t_9 = __Pyx_PyObject_GetAttrStr(((PyObject *)Py_TYPE(__pyx_v_value)), __pyx_mstate_global->__pyx_n_u_name); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 164, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_9);
+  __pyx_t_5 = 0;
+  {
+    PyObject *__pyx_callargs[2] = {__pyx_t_8, __pyx_t_9};
+    __pyx_t_7 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_format, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+    __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
+    __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
+    if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 164, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_7);
+  }
   __pyx_t_5 = 1;
   {
     PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_t_7};
@@ -4810,15 +4860,15 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_4byteToStr(CYTHON_
     __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
     __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
     __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 147, __pyx_L1_error)
+    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 164, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_3);
   }
   __Pyx_Raise(__pyx_t_3, 0, 0, 0);
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __PYX_ERR(0, 147, __pyx_L1_error)
+  __PYX_ERR(0, 164, __pyx_L1_error)
 
-  /* "ChronicleLogger.pyx":142
- *         raise TypeError(f"Expected str/bytes/None, got {type(value).__name__}")
+  /* "ChronicleLogger.pyx":158
+ *         raise TypeError("Expected str/bytes/None, got {0}".format(type(value).__name__))
  * 
  *     def byteToStr(self, value):             # <<<<<<<<<<<<<<
  *         if value is None or isinstance(value, basestring):
@@ -4832,6 +4882,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_4byteToStr(CYTHON_
   __Pyx_XDECREF(__pyx_t_6);
   __Pyx_XDECREF(__pyx_t_7);
   __Pyx_XDECREF(__pyx_t_8);
+  __Pyx_XDECREF(__pyx_t_9);
   __Pyx_AddTraceback("ChronicleLogger.ChronicleLogger.byteToStr", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = NULL;
   __pyx_L0:;
@@ -4840,8 +4891,8 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_4byteToStr(CYTHON_
   return __pyx_r;
 }
 
-/* "ChronicleLogger.pyx":149
- *         raise TypeError(f"Expected str/bytes/None, got {type(value).__name__}")
+/* "ChronicleLogger.pyx":166
+ *         raise TypeError("Expected str/bytes/None, got {0}".format(type(value).__name__))
  * 
  *     def inPython(self):             # <<<<<<<<<<<<<<
  *         if self.__is_python__ is None:
@@ -4887,32 +4938,32 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   {
     PyObject ** const __pyx_pyargnames[] = {&__pyx_mstate_global->__pyx_n_u_self,0};
     const Py_ssize_t __pyx_kwds_len = (__pyx_kwds) ? __Pyx_NumKwargs_FASTCALL(__pyx_kwds) : 0;
-    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 149, __pyx_L3_error)
+    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 166, __pyx_L3_error)
     if (__pyx_kwds_len > 0) {
       switch (__pyx_nargs) {
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 149, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 166, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  0: break;
         default: goto __pyx_L5_argtuple_error;
       }
       const Py_ssize_t kwd_pos_args = __pyx_nargs;
-      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "inPython", 0) < 0) __PYX_ERR(0, 149, __pyx_L3_error)
+      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "inPython", 0) < 0) __PYX_ERR(0, 166, __pyx_L3_error)
       for (Py_ssize_t i = __pyx_nargs; i < 1; i++) {
-        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("inPython", 1, 1, 1, i); __PYX_ERR(0, 149, __pyx_L3_error) }
+        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("inPython", 1, 1, 1, i); __PYX_ERR(0, 166, __pyx_L3_error) }
       }
     } else if (unlikely(__pyx_nargs != 1)) {
       goto __pyx_L5_argtuple_error;
     } else {
       values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 149, __pyx_L3_error)
+      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 166, __pyx_L3_error)
     }
     __pyx_v_self = values[0];
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("inPython", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 149, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("inPython", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 166, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -4947,29 +4998,29 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_6inPython(CYTHON_U
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("inPython", 0);
 
-  /* "ChronicleLogger.pyx":150
+  /* "ChronicleLogger.pyx":167
  * 
  *     def inPython(self):
  *         if self.__is_python__ is None:             # <<<<<<<<<<<<<<
  *             self.__is_python__ = 'python' in sys.executable.lower()
  *         return self.__is_python__
 */
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_is_python); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 150, __pyx_L1_error)
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_is_python); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 167, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_t_2 = (__pyx_t_1 == Py_None);
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   if (__pyx_t_2) {
 
-    /* "ChronicleLogger.pyx":151
+    /* "ChronicleLogger.pyx":168
  *     def inPython(self):
  *         if self.__is_python__ is None:
  *             self.__is_python__ = 'python' in sys.executable.lower()             # <<<<<<<<<<<<<<
  *         return self.__is_python__
  * 
 */
-    __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 151, __pyx_L1_error)
+    __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 168, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_4);
-    __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_executable); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 151, __pyx_L1_error)
+    __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_executable); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 168, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_5);
     __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
     __pyx_t_3 = __pyx_t_5;
@@ -4980,17 +5031,17 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_6inPython(CYTHON_U
       __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_lower, __pyx_callargs+__pyx_t_6, (1-__pyx_t_6) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
       __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
       __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 151, __pyx_L1_error)
+      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 168, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
     }
-    __pyx_t_2 = (__Pyx_PySequence_ContainsTF(__pyx_mstate_global->__pyx_n_u_python, __pyx_t_1, Py_EQ)); if (unlikely((__pyx_t_2 < 0))) __PYX_ERR(0, 151, __pyx_L1_error)
+    __pyx_t_2 = (__Pyx_PySequence_ContainsTF(__pyx_mstate_global->__pyx_n_u_python, __pyx_t_1, Py_EQ)); if (unlikely((__pyx_t_2 < 0))) __PYX_ERR(0, 168, __pyx_L1_error)
     __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-    __pyx_t_1 = __Pyx_PyBool_FromLong(__pyx_t_2); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 151, __pyx_L1_error)
+    __pyx_t_1 = __Pyx_PyBool_FromLong(__pyx_t_2); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 168, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
-    if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_is_python, __pyx_t_1) < 0) __PYX_ERR(0, 151, __pyx_L1_error)
+    if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_is_python, __pyx_t_1) < 0) __PYX_ERR(0, 168, __pyx_L1_error)
     __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-    /* "ChronicleLogger.pyx":150
+    /* "ChronicleLogger.pyx":167
  * 
  *     def inPython(self):
  *         if self.__is_python__ is None:             # <<<<<<<<<<<<<<
@@ -4999,7 +5050,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_6inPython(CYTHON_U
 */
   }
 
-  /* "ChronicleLogger.pyx":152
+  /* "ChronicleLogger.pyx":169
  *         if self.__is_python__ is None:
  *             self.__is_python__ = 'python' in sys.executable.lower()
  *         return self.__is_python__             # <<<<<<<<<<<<<<
@@ -5007,14 +5058,14 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_6inPython(CYTHON_U
  *     def logName(self, logname=None):
 */
   __Pyx_XDECREF(__pyx_r);
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_is_python); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 152, __pyx_L1_error)
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_is_python); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 169, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_r = __pyx_t_1;
   __pyx_t_1 = 0;
   goto __pyx_L0;
 
-  /* "ChronicleLogger.pyx":149
- *         raise TypeError(f"Expected str/bytes/None, got {type(value).__name__}")
+  /* "ChronicleLogger.pyx":166
+ *         raise TypeError("Expected str/bytes/None, got {0}".format(type(value).__name__))
  * 
  *     def inPython(self):             # <<<<<<<<<<<<<<
  *         if self.__is_python__ is None:
@@ -5035,7 +5086,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_6inPython(CYTHON_U
   return __pyx_r;
 }
 
-/* "ChronicleLogger.pyx":154
+/* "ChronicleLogger.pyx":171
  *         return self.__is_python__
  * 
  *     def logName(self, logname=None):             # <<<<<<<<<<<<<<
@@ -5083,35 +5134,35 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   {
     PyObject ** const __pyx_pyargnames[] = {&__pyx_mstate_global->__pyx_n_u_self,&__pyx_mstate_global->__pyx_n_u_logname,0};
     const Py_ssize_t __pyx_kwds_len = (__pyx_kwds) ? __Pyx_NumKwargs_FASTCALL(__pyx_kwds) : 0;
-    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 154, __pyx_L3_error)
+    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 171, __pyx_L3_error)
     if (__pyx_kwds_len > 0) {
       switch (__pyx_nargs) {
         case  2:
         values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 154, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 171, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 154, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 171, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  0: break;
         default: goto __pyx_L5_argtuple_error;
       }
       const Py_ssize_t kwd_pos_args = __pyx_nargs;
-      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "logName", 0) < 0) __PYX_ERR(0, 154, __pyx_L3_error)
+      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "logName", 0) < 0) __PYX_ERR(0, 171, __pyx_L3_error)
       if (!values[1]) values[1] = __Pyx_NewRef(((PyObject *)Py_None));
       for (Py_ssize_t i = __pyx_nargs; i < 1; i++) {
-        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("logName", 0, 1, 2, i); __PYX_ERR(0, 154, __pyx_L3_error) }
+        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("logName", 0, 1, 2, i); __PYX_ERR(0, 171, __pyx_L3_error) }
       }
     } else {
       switch (__pyx_nargs) {
         case  2:
         values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 154, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 171, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 154, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 171, __pyx_L3_error)
         break;
         default: goto __pyx_L5_argtuple_error;
       }
@@ -5122,7 +5173,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("logName", 0, 1, 2, __pyx_nargs); __PYX_ERR(0, 154, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("logName", 0, 1, 2, __pyx_nargs); __PYX_ERR(0, 171, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -5160,7 +5211,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_8logName(CYTHON_UN
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("logName", 0);
 
-  /* "ChronicleLogger.pyx":155
+  /* "ChronicleLogger.pyx":172
  * 
  *     def logName(self, logname=None):
  *         if logname is not None:             # <<<<<<<<<<<<<<
@@ -5170,12 +5221,12 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_8logName(CYTHON_UN
   __pyx_t_1 = (__pyx_v_logname != Py_None);
   if (__pyx_t_1) {
 
-    /* "ChronicleLogger.pyx":156
+    /* "ChronicleLogger.pyx":173
  *     def logName(self, logname=None):
  *         if logname is not None:
  *             self.__logname__ = self.strToByte(logname)             # <<<<<<<<<<<<<<
  *             if self.inPython():
- *                 name = self.__logname__.decode()
+ *                 name = self.__logname__.decode('utf-8')  # NEW: Explicit decode
 */
     __pyx_t_3 = __pyx_v_self;
     __Pyx_INCREF(__pyx_t_3);
@@ -5184,17 +5235,17 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_8logName(CYTHON_UN
       PyObject *__pyx_callargs[2] = {__pyx_t_3, __pyx_v_logname};
       __pyx_t_2 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_strToByte, __pyx_callargs+__pyx_t_4, (2-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
       __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
-      if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 156, __pyx_L1_error)
+      if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 173, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_2);
     }
-    if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logname_2, __pyx_t_2) < 0) __PYX_ERR(0, 156, __pyx_L1_error)
+    if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logname_2, __pyx_t_2) < 0) __PYX_ERR(0, 173, __pyx_L1_error)
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-    /* "ChronicleLogger.pyx":157
+    /* "ChronicleLogger.pyx":174
  *         if logname is not None:
  *             self.__logname__ = self.strToByte(logname)
  *             if self.inPython():             # <<<<<<<<<<<<<<
- *                 name = self.__logname__.decode()
+ *                 name = self.__logname__.decode('utf-8')  # NEW: Explicit decode
  *                 name = re.sub(r'(?<!^)(?=[A-Z])', '-', name).lower()
 */
     __pyx_t_3 = __pyx_v_self;
@@ -5204,47 +5255,47 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_8logName(CYTHON_UN
       PyObject *__pyx_callargs[2] = {__pyx_t_3, NULL};
       __pyx_t_2 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_inPython, __pyx_callargs+__pyx_t_4, (1-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
       __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
-      if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 157, __pyx_L1_error)
+      if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 174, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_2);
     }
-    __pyx_t_1 = __Pyx_PyObject_IsTrue(__pyx_t_2); if (unlikely((__pyx_t_1 < 0))) __PYX_ERR(0, 157, __pyx_L1_error)
+    __pyx_t_1 = __Pyx_PyObject_IsTrue(__pyx_t_2); if (unlikely((__pyx_t_1 < 0))) __PYX_ERR(0, 174, __pyx_L1_error)
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
     if (__pyx_t_1) {
 
-      /* "ChronicleLogger.pyx":158
+      /* "ChronicleLogger.pyx":175
  *             self.__logname__ = self.strToByte(logname)
  *             if self.inPython():
- *                 name = self.__logname__.decode()             # <<<<<<<<<<<<<<
+ *                 name = self.__logname__.decode('utf-8')  # NEW: Explicit decode             # <<<<<<<<<<<<<<
  *                 name = re.sub(r'(?<!^)(?=[A-Z])', '-', name).lower()
- *                 self.__logname__ = name.encode()
+ *                 self.__logname__ = name.encode('utf-8')  # NEW: Explicit encode
 */
-      __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logname_2); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 158, __pyx_L1_error)
+      __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logname_2); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 175, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_5);
       __pyx_t_3 = __pyx_t_5;
       __Pyx_INCREF(__pyx_t_3);
       __pyx_t_4 = 0;
       {
-        PyObject *__pyx_callargs[2] = {__pyx_t_3, NULL};
-        __pyx_t_2 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_decode, __pyx_callargs+__pyx_t_4, (1-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+        PyObject *__pyx_callargs[2] = {__pyx_t_3, __pyx_mstate_global->__pyx_kp_u_utf_8};
+        __pyx_t_2 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_decode, __pyx_callargs+__pyx_t_4, (2-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
         __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
         __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-        if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 158, __pyx_L1_error)
+        if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 175, __pyx_L1_error)
         __Pyx_GOTREF(__pyx_t_2);
       }
       __pyx_v_name = __pyx_t_2;
       __pyx_t_2 = 0;
 
-      /* "ChronicleLogger.pyx":159
+      /* "ChronicleLogger.pyx":176
  *             if self.inPython():
- *                 name = self.__logname__.decode()
+ *                 name = self.__logname__.decode('utf-8')  # NEW: Explicit decode
  *                 name = re.sub(r'(?<!^)(?=[A-Z])', '-', name).lower()             # <<<<<<<<<<<<<<
- *                 self.__logname__ = name.encode()
+ *                 self.__logname__ = name.encode('utf-8')  # NEW: Explicit encode
  *         else:
 */
       __pyx_t_6 = NULL;
-      __Pyx_GetModuleGlobalName(__pyx_t_7, __pyx_mstate_global->__pyx_n_u_re); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 159, __pyx_L1_error)
+      __Pyx_GetModuleGlobalName(__pyx_t_7, __pyx_mstate_global->__pyx_n_u_re); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 176, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_7);
-      __pyx_t_8 = __Pyx_PyObject_GetAttrStr(__pyx_t_7, __pyx_mstate_global->__pyx_n_u_sub); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 159, __pyx_L1_error)
+      __pyx_t_8 = __Pyx_PyObject_GetAttrStr(__pyx_t_7, __pyx_mstate_global->__pyx_n_u_sub); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 176, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_8);
       __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
       __pyx_t_4 = 1;
@@ -5260,11 +5311,11 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_8logName(CYTHON_UN
       }
       #endif
       {
-        PyObject *__pyx_callargs[4] = {__pyx_t_6, __pyx_mstate_global->__pyx_kp_u_A_Z, __pyx_mstate_global->__pyx_kp_u__4, __pyx_v_name};
+        PyObject *__pyx_callargs[4] = {__pyx_t_6, __pyx_mstate_global->__pyx_kp_u_A_Z, __pyx_mstate_global->__pyx_kp_u__3, __pyx_v_name};
         __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_8, __pyx_callargs+__pyx_t_4, (4-__pyx_t_4) | (__pyx_t_4*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
         __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
         __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
-        if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 159, __pyx_L1_error)
+        if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 176, __pyx_L1_error)
         __Pyx_GOTREF(__pyx_t_3);
       }
       __pyx_t_5 = __pyx_t_3;
@@ -5275,42 +5326,42 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_8logName(CYTHON_UN
         __pyx_t_2 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_lower, __pyx_callargs+__pyx_t_4, (1-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
         __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
         __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-        if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 159, __pyx_L1_error)
+        if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 176, __pyx_L1_error)
         __Pyx_GOTREF(__pyx_t_2);
       }
       __Pyx_DECREF_SET(__pyx_v_name, __pyx_t_2);
       __pyx_t_2 = 0;
 
-      /* "ChronicleLogger.pyx":160
- *                 name = self.__logname__.decode()
+      /* "ChronicleLogger.pyx":177
+ *                 name = self.__logname__.decode('utf-8')  # NEW: Explicit decode
  *                 name = re.sub(r'(?<!^)(?=[A-Z])', '-', name).lower()
- *                 self.__logname__ = name.encode()             # <<<<<<<<<<<<<<
+ *                 self.__logname__ = name.encode('utf-8')  # NEW: Explicit encode             # <<<<<<<<<<<<<<
  *         else:
- *             return self.__logname__.decode()
+ *             return self.__logname__.decode('utf-8')  # NEW: Explicit decode
 */
       __pyx_t_3 = __pyx_v_name;
       __Pyx_INCREF(__pyx_t_3);
       __pyx_t_4 = 0;
       {
-        PyObject *__pyx_callargs[2] = {__pyx_t_3, NULL};
-        __pyx_t_2 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_encode, __pyx_callargs+__pyx_t_4, (1-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+        PyObject *__pyx_callargs[2] = {__pyx_t_3, __pyx_mstate_global->__pyx_kp_u_utf_8};
+        __pyx_t_2 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_encode, __pyx_callargs+__pyx_t_4, (2-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
         __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
-        if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 160, __pyx_L1_error)
+        if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 177, __pyx_L1_error)
         __Pyx_GOTREF(__pyx_t_2);
       }
-      if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logname_2, __pyx_t_2) < 0) __PYX_ERR(0, 160, __pyx_L1_error)
+      if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logname_2, __pyx_t_2) < 0) __PYX_ERR(0, 177, __pyx_L1_error)
       __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-      /* "ChronicleLogger.pyx":157
+      /* "ChronicleLogger.pyx":174
  *         if logname is not None:
  *             self.__logname__ = self.strToByte(logname)
  *             if self.inPython():             # <<<<<<<<<<<<<<
- *                 name = self.__logname__.decode()
+ *                 name = self.__logname__.decode('utf-8')  # NEW: Explicit decode
  *                 name = re.sub(r'(?<!^)(?=[A-Z])', '-', name).lower()
 */
     }
 
-    /* "ChronicleLogger.pyx":155
+    /* "ChronicleLogger.pyx":172
  * 
  *     def logName(self, logname=None):
  *         if logname is not None:             # <<<<<<<<<<<<<<
@@ -5320,26 +5371,26 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_8logName(CYTHON_UN
     goto __pyx_L3;
   }
 
-  /* "ChronicleLogger.pyx":162
- *                 self.__logname__ = name.encode()
+  /* "ChronicleLogger.pyx":179
+ *                 self.__logname__ = name.encode('utf-8')  # NEW: Explicit encode
  *         else:
- *             return self.__logname__.decode()             # <<<<<<<<<<<<<<
+ *             return self.__logname__.decode('utf-8')  # NEW: Explicit decode             # <<<<<<<<<<<<<<
  * 
  *     def __set_base_dir__(self, basedir=b""):
 */
   /*else*/ {
     __Pyx_XDECREF(__pyx_r);
-    __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logname_2); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 162, __pyx_L1_error)
+    __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logname_2); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 179, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_5);
     __pyx_t_3 = __pyx_t_5;
     __Pyx_INCREF(__pyx_t_3);
     __pyx_t_4 = 0;
     {
-      PyObject *__pyx_callargs[2] = {__pyx_t_3, NULL};
-      __pyx_t_2 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_decode, __pyx_callargs+__pyx_t_4, (1-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+      PyObject *__pyx_callargs[2] = {__pyx_t_3, __pyx_mstate_global->__pyx_kp_u_utf_8};
+      __pyx_t_2 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_decode, __pyx_callargs+__pyx_t_4, (2-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
       __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
       __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-      if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 162, __pyx_L1_error)
+      if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 179, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_2);
     }
     __pyx_r = __pyx_t_2;
@@ -5348,7 +5399,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_8logName(CYTHON_UN
   }
   __pyx_L3:;
 
-  /* "ChronicleLogger.pyx":154
+  /* "ChronicleLogger.pyx":171
  *         return self.__is_python__
  * 
  *     def logName(self, logname=None):             # <<<<<<<<<<<<<<
@@ -5375,12 +5426,12 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_8logName(CYTHON_UN
   return __pyx_r;
 }
 
-/* "ChronicleLogger.pyx":164
- *             return self.__logname__.decode()
+/* "ChronicleLogger.pyx":181
+ *             return self.__logname__.decode('utf-8')  # NEW: Explicit decode
  * 
  *     def __set_base_dir__(self, basedir=b""):             # <<<<<<<<<<<<<<
  *         basedir_str = self.byteToStr(basedir)
- *         if not basedir_str:
+ *         if not basedir_str or basedir_str=='':
 */
 
 /* Python wrapper */
@@ -5423,46 +5474,46 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   {
     PyObject ** const __pyx_pyargnames[] = {&__pyx_mstate_global->__pyx_n_u_self,&__pyx_mstate_global->__pyx_n_u_basedir,0};
     const Py_ssize_t __pyx_kwds_len = (__pyx_kwds) ? __Pyx_NumKwargs_FASTCALL(__pyx_kwds) : 0;
-    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 164, __pyx_L3_error)
+    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 181, __pyx_L3_error)
     if (__pyx_kwds_len > 0) {
       switch (__pyx_nargs) {
         case  2:
         values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 164, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 181, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 164, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 181, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  0: break;
         default: goto __pyx_L5_argtuple_error;
       }
       const Py_ssize_t kwd_pos_args = __pyx_nargs;
-      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "__set_base_dir__", 0) < 0) __PYX_ERR(0, 164, __pyx_L3_error)
-      if (!values[1]) values[1] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_kp_b__2)));
+      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "__set_base_dir__", 0) < 0) __PYX_ERR(0, 181, __pyx_L3_error)
+      if (!values[1]) values[1] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_kp_b_)));
       for (Py_ssize_t i = __pyx_nargs; i < 1; i++) {
-        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("__set_base_dir__", 0, 1, 2, i); __PYX_ERR(0, 164, __pyx_L3_error) }
+        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("__set_base_dir__", 0, 1, 2, i); __PYX_ERR(0, 181, __pyx_L3_error) }
       }
     } else {
       switch (__pyx_nargs) {
         case  2:
         values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 164, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 181, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 164, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 181, __pyx_L3_error)
         break;
         default: goto __pyx_L5_argtuple_error;
       }
-      if (!values[1]) values[1] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_kp_b__2)));
+      if (!values[1]) values[1] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_kp_b_)));
     }
     __pyx_v_self = values[0];
     __pyx_v_basedir = values[1];
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("__set_base_dir__", 0, 1, 2, __pyx_nargs); __PYX_ERR(0, 164, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("__set_base_dir__", 0, 1, 2, __pyx_nargs); __PYX_ERR(0, 181, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -5495,20 +5546,21 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_10__set_base_dir__
   size_t __pyx_t_3;
   int __pyx_t_4;
   int __pyx_t_5;
-  PyObject *__pyx_t_6 = NULL;
+  int __pyx_t_6;
   PyObject *__pyx_t_7 = NULL;
   PyObject *__pyx_t_8 = NULL;
+  PyObject *__pyx_t_9 = NULL;
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("__set_base_dir__", 0);
 
-  /* "ChronicleLogger.pyx":165
+  /* "ChronicleLogger.pyx":182
  * 
  *     def __set_base_dir__(self, basedir=b""):
  *         basedir_str = self.byteToStr(basedir)             # <<<<<<<<<<<<<<
- *         if not basedir_str:
- *             appname = self.__logname__.decode()
+ *         if not basedir_str or basedir_str=='':
+ *             appname = self.__logname__.decode('utf-8')  # NEW: Explicit decode
 */
   __pyx_t_2 = __pyx_v_self;
   __Pyx_INCREF(__pyx_t_2);
@@ -5517,189 +5569,207 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_10__set_base_dir__
     PyObject *__pyx_callargs[2] = {__pyx_t_2, __pyx_v_basedir};
     __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_byteToStr, __pyx_callargs+__pyx_t_3, (2-__pyx_t_3) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
     __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 165, __pyx_L1_error)
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 182, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
   }
   __pyx_v_basedir_str = __pyx_t_1;
   __pyx_t_1 = 0;
 
-  /* "ChronicleLogger.pyx":166
+  /* "ChronicleLogger.pyx":183
  *     def __set_base_dir__(self, basedir=b""):
  *         basedir_str = self.byteToStr(basedir)
- *         if not basedir_str:             # <<<<<<<<<<<<<<
- *             appname = self.__logname__.decode()
+ *         if not basedir_str or basedir_str=='':             # <<<<<<<<<<<<<<
+ *             appname = self.__logname__.decode('utf-8')  # NEW: Explicit decode
  *             if _Suroot.should_use_system_paths():
 */
-  __pyx_t_4 = __Pyx_PyObject_IsTrue(__pyx_v_basedir_str); if (unlikely((__pyx_t_4 < 0))) __PYX_ERR(0, 166, __pyx_L1_error)
-  __pyx_t_5 = (!__pyx_t_4);
-  if (__pyx_t_5) {
+  __pyx_t_5 = __Pyx_PyObject_IsTrue(__pyx_v_basedir_str); if (unlikely((__pyx_t_5 < 0))) __PYX_ERR(0, 183, __pyx_L1_error)
+  __pyx_t_6 = (!__pyx_t_5);
+  if (!__pyx_t_6) {
+  } else {
+    __pyx_t_4 = __pyx_t_6;
+    goto __pyx_L4_bool_binop_done;
+  }
+  __pyx_t_6 = (__Pyx_PyUnicode_Equals(__pyx_v_basedir_str, __pyx_mstate_global->__pyx_kp_u_, Py_EQ)); if (unlikely((__pyx_t_6 < 0))) __PYX_ERR(0, 183, __pyx_L1_error)
+  __pyx_t_4 = __pyx_t_6;
+  __pyx_L4_bool_binop_done:;
+  if (__pyx_t_4) {
 
-    /* "ChronicleLogger.pyx":167
+    /* "ChronicleLogger.pyx":184
  *         basedir_str = self.byteToStr(basedir)
- *         if not basedir_str:
- *             appname = self.__logname__.decode()             # <<<<<<<<<<<<<<
+ *         if not basedir_str or basedir_str=='':
+ *             appname = self.__logname__.decode('utf-8')  # NEW: Explicit decode             # <<<<<<<<<<<<<<
  *             if _Suroot.should_use_system_paths():
- *                 path = f"/var/{appname}"
+ *                 # NEW: Replaced f-string with .format()
 */
-    __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logname_2); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 167, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_6);
-    __pyx_t_2 = __pyx_t_6;
+    __pyx_t_7 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logname_2); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 184, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_7);
+    __pyx_t_2 = __pyx_t_7;
     __Pyx_INCREF(__pyx_t_2);
     __pyx_t_3 = 0;
     {
-      PyObject *__pyx_callargs[2] = {__pyx_t_2, NULL};
-      __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_decode, __pyx_callargs+__pyx_t_3, (1-__pyx_t_3) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+      PyObject *__pyx_callargs[2] = {__pyx_t_2, __pyx_mstate_global->__pyx_kp_u_utf_8};
+      __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_decode, __pyx_callargs+__pyx_t_3, (2-__pyx_t_3) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
       __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
-      __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 167, __pyx_L1_error)
+      __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 184, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
     }
     __pyx_v_appname = __pyx_t_1;
     __pyx_t_1 = 0;
 
-    /* "ChronicleLogger.pyx":168
- *         if not basedir_str:
- *             appname = self.__logname__.decode()
+    /* "ChronicleLogger.pyx":185
+ *         if not basedir_str or basedir_str=='':
+ *             appname = self.__logname__.decode('utf-8')  # NEW: Explicit decode
  *             if _Suroot.should_use_system_paths():             # <<<<<<<<<<<<<<
- *                 path = f"/var/{appname}"
- *             else:
+ *                 # NEW: Replaced f-string with .format()
+ *                 path = "/var/{0}".format(appname)
 */
-    __pyx_t_6 = NULL;
-    __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 168, __pyx_L1_error)
+    __pyx_t_7 = NULL;
+    __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 185, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
-    __pyx_t_7 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_should_use_system_paths); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 168, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_7);
+    __pyx_t_8 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_should_use_system_paths); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 185, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_8);
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
     __pyx_t_3 = 1;
     #if CYTHON_UNPACK_METHODS
-    if (unlikely(PyMethod_Check(__pyx_t_7))) {
-      __pyx_t_6 = PyMethod_GET_SELF(__pyx_t_7);
-      assert(__pyx_t_6);
-      PyObject* __pyx__function = PyMethod_GET_FUNCTION(__pyx_t_7);
-      __Pyx_INCREF(__pyx_t_6);
+    if (unlikely(PyMethod_Check(__pyx_t_8))) {
+      __pyx_t_7 = PyMethod_GET_SELF(__pyx_t_8);
+      assert(__pyx_t_7);
+      PyObject* __pyx__function = PyMethod_GET_FUNCTION(__pyx_t_8);
+      __Pyx_INCREF(__pyx_t_7);
       __Pyx_INCREF(__pyx__function);
-      __Pyx_DECREF_SET(__pyx_t_7, __pyx__function);
+      __Pyx_DECREF_SET(__pyx_t_8, __pyx__function);
       __pyx_t_3 = 0;
     }
     #endif
     {
-      PyObject *__pyx_callargs[2] = {__pyx_t_6, NULL};
-      __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_7, __pyx_callargs+__pyx_t_3, (1-__pyx_t_3) | (__pyx_t_3*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
-      __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
-      __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
-      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 168, __pyx_L1_error)
+      PyObject *__pyx_callargs[2] = {__pyx_t_7, NULL};
+      __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_8, __pyx_callargs+__pyx_t_3, (1-__pyx_t_3) | (__pyx_t_3*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+      __Pyx_XDECREF(__pyx_t_7); __pyx_t_7 = 0;
+      __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
+      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 185, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
     }
-    __pyx_t_5 = __Pyx_PyObject_IsTrue(__pyx_t_1); if (unlikely((__pyx_t_5 < 0))) __PYX_ERR(0, 168, __pyx_L1_error)
+    __pyx_t_4 = __Pyx_PyObject_IsTrue(__pyx_t_1); if (unlikely((__pyx_t_4 < 0))) __PYX_ERR(0, 185, __pyx_L1_error)
     __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-    if (__pyx_t_5) {
+    if (__pyx_t_4) {
 
-      /* "ChronicleLogger.pyx":169
- *             appname = self.__logname__.decode()
+      /* "ChronicleLogger.pyx":187
  *             if _Suroot.should_use_system_paths():
- *                 path = f"/var/{appname}"             # <<<<<<<<<<<<<<
+ *                 # NEW: Replaced f-string with .format()
+ *                 path = "/var/{0}".format(appname)             # <<<<<<<<<<<<<<
  *             else:
  *                 home = os.path.expanduser("~")
 */
-      __pyx_t_1 = __Pyx_PyObject_FormatSimple(__pyx_v_appname, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 169, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_1);
-      __pyx_t_7 = __Pyx_PyUnicode_Concat(__pyx_mstate_global->__pyx_kp_u_var, __pyx_t_1); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 169, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_7);
-      __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-      __pyx_v_path = __pyx_t_7;
-      __pyx_t_7 = 0;
-
-      /* "ChronicleLogger.pyx":168
- *         if not basedir_str:
- *             appname = self.__logname__.decode()
- *             if _Suroot.should_use_system_paths():             # <<<<<<<<<<<<<<
- *                 path = f"/var/{appname}"
- *             else:
-*/
-      goto __pyx_L4;
-    }
-
-    /* "ChronicleLogger.pyx":171
- *                 path = f"/var/{appname}"
- *             else:
- *                 home = os.path.expanduser("~")             # <<<<<<<<<<<<<<
- *                 path = os.path.join(home, f".app/{appname}")
- *             self.__basedir__ = path
-*/
-    /*else*/ {
-      __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 171, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_6);
-      __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_path); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 171, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_2);
-      __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-      __pyx_t_1 = __pyx_t_2;
-      __Pyx_INCREF(__pyx_t_1);
+      __pyx_t_8 = __pyx_mstate_global->__pyx_kp_u_var_0;
+      __Pyx_INCREF(__pyx_t_8);
       __pyx_t_3 = 0;
       {
-        PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_mstate_global->__pyx_kp_u__5};
-        __pyx_t_7 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_expanduser, __pyx_callargs+__pyx_t_3, (2-__pyx_t_3) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
-        __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
-        __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-        if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 171, __pyx_L1_error)
-        __Pyx_GOTREF(__pyx_t_7);
+        PyObject *__pyx_callargs[2] = {__pyx_t_8, __pyx_v_appname};
+        __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_format, __pyx_callargs+__pyx_t_3, (2-__pyx_t_3) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+        __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
+        if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 187, __pyx_L1_error)
+        __Pyx_GOTREF(__pyx_t_1);
       }
-      __pyx_v_home = __pyx_t_7;
-      __pyx_t_7 = 0;
+      __pyx_v_path = __pyx_t_1;
+      __pyx_t_1 = 0;
 
-      /* "ChronicleLogger.pyx":172
+      /* "ChronicleLogger.pyx":185
+ *         if not basedir_str or basedir_str=='':
+ *             appname = self.__logname__.decode('utf-8')  # NEW: Explicit decode
+ *             if _Suroot.should_use_system_paths():             # <<<<<<<<<<<<<<
+ *                 # NEW: Replaced f-string with .format()
+ *                 path = "/var/{0}".format(appname)
+*/
+      goto __pyx_L6;
+    }
+
+    /* "ChronicleLogger.pyx":189
+ *                 path = "/var/{0}".format(appname)
  *             else:
+ *                 home = os.path.expanduser("~")             # <<<<<<<<<<<<<<
+ *                 # NEW: Replaced f-string with .format()
+ *                 path = os.path.join(home, ".app/{0}".format(appname))
+*/
+    /*else*/ {
+      __Pyx_GetModuleGlobalName(__pyx_t_7, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 189, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_7);
+      __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_7, __pyx_mstate_global->__pyx_n_u_path); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 189, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_2);
+      __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+      __pyx_t_8 = __pyx_t_2;
+      __Pyx_INCREF(__pyx_t_8);
+      __pyx_t_3 = 0;
+      {
+        PyObject *__pyx_callargs[2] = {__pyx_t_8, __pyx_mstate_global->__pyx_kp_u__4};
+        __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_expanduser, __pyx_callargs+__pyx_t_3, (2-__pyx_t_3) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+        __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
+        __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+        if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 189, __pyx_L1_error)
+        __Pyx_GOTREF(__pyx_t_1);
+      }
+      __pyx_v_home = __pyx_t_1;
+      __pyx_t_1 = 0;
+
+      /* "ChronicleLogger.pyx":191
  *                 home = os.path.expanduser("~")
- *                 path = os.path.join(home, f".app/{appname}")             # <<<<<<<<<<<<<<
+ *                 # NEW: Replaced f-string with .format()
+ *                 path = os.path.join(home, ".app/{0}".format(appname))             # <<<<<<<<<<<<<<
  *             self.__basedir__ = path
  *         else:
 */
-      __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 172, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_1);
-      __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_path); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 172, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_6);
-      __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-      __pyx_t_2 = __pyx_t_6;
-      __Pyx_INCREF(__pyx_t_2);
-      __pyx_t_1 = __Pyx_PyObject_FormatSimple(__pyx_v_appname, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 172, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_1);
-      __pyx_t_8 = __Pyx_PyUnicode_Concat(__pyx_mstate_global->__pyx_kp_u_app_2, __pyx_t_1); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 172, __pyx_L1_error)
+      __Pyx_GetModuleGlobalName(__pyx_t_8, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 191, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_8);
-      __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+      __pyx_t_7 = __Pyx_PyObject_GetAttrStr(__pyx_t_8, __pyx_mstate_global->__pyx_n_u_path); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 191, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_7);
+      __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
+      __pyx_t_2 = __pyx_t_7;
+      __Pyx_INCREF(__pyx_t_2);
+      __pyx_t_9 = __pyx_mstate_global->__pyx_kp_u_app_0;
+      __Pyx_INCREF(__pyx_t_9);
+      __pyx_t_3 = 0;
+      {
+        PyObject *__pyx_callargs[2] = {__pyx_t_9, __pyx_v_appname};
+        __pyx_t_8 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_format, __pyx_callargs+__pyx_t_3, (2-__pyx_t_3) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+        __Pyx_XDECREF(__pyx_t_9); __pyx_t_9 = 0;
+        if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 191, __pyx_L1_error)
+        __Pyx_GOTREF(__pyx_t_8);
+      }
       __pyx_t_3 = 0;
       {
         PyObject *__pyx_callargs[3] = {__pyx_t_2, __pyx_v_home, __pyx_t_8};
-        __pyx_t_7 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_join, __pyx_callargs+__pyx_t_3, (3-__pyx_t_3) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+        __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_join, __pyx_callargs+__pyx_t_3, (3-__pyx_t_3) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
         __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
         __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
-        __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-        if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 172, __pyx_L1_error)
-        __Pyx_GOTREF(__pyx_t_7);
+        __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+        if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 191, __pyx_L1_error)
+        __Pyx_GOTREF(__pyx_t_1);
       }
-      __pyx_v_path = __pyx_t_7;
-      __pyx_t_7 = 0;
+      __pyx_v_path = __pyx_t_1;
+      __pyx_t_1 = 0;
     }
-    __pyx_L4:;
+    __pyx_L6:;
 
-    /* "ChronicleLogger.pyx":173
- *                 home = os.path.expanduser("~")
- *                 path = os.path.join(home, f".app/{appname}")
+    /* "ChronicleLogger.pyx":192
+ *                 # NEW: Replaced f-string with .format()
+ *                 path = os.path.join(home, ".app/{0}".format(appname))
  *             self.__basedir__ = path             # <<<<<<<<<<<<<<
  *         else:
  *             self.__basedir__ = basedir_str
 */
-    if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_basedir_2, __pyx_v_path) < 0) __PYX_ERR(0, 173, __pyx_L1_error)
+    if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_basedir_2, __pyx_v_path) < 0) __PYX_ERR(0, 192, __pyx_L1_error)
 
-    /* "ChronicleLogger.pyx":166
+    /* "ChronicleLogger.pyx":183
  *     def __set_base_dir__(self, basedir=b""):
  *         basedir_str = self.byteToStr(basedir)
- *         if not basedir_str:             # <<<<<<<<<<<<<<
- *             appname = self.__logname__.decode()
+ *         if not basedir_str or basedir_str=='':             # <<<<<<<<<<<<<<
+ *             appname = self.__logname__.decode('utf-8')  # NEW: Explicit decode
  *             if _Suroot.should_use_system_paths():
 */
     goto __pyx_L3;
   }
 
-  /* "ChronicleLogger.pyx":175
+  /* "ChronicleLogger.pyx":194
  *             self.__basedir__ = path
  *         else:
  *             self.__basedir__ = basedir_str             # <<<<<<<<<<<<<<
@@ -5707,16 +5777,16 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_10__set_base_dir__
  *     def baseDir(self, basedir=None):
 */
   /*else*/ {
-    if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_basedir_2, __pyx_v_basedir_str) < 0) __PYX_ERR(0, 175, __pyx_L1_error)
+    if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_basedir_2, __pyx_v_basedir_str) < 0) __PYX_ERR(0, 194, __pyx_L1_error)
   }
   __pyx_L3:;
 
-  /* "ChronicleLogger.pyx":164
- *             return self.__logname__.decode()
+  /* "ChronicleLogger.pyx":181
+ *             return self.__logname__.decode('utf-8')  # NEW: Explicit decode
  * 
  *     def __set_base_dir__(self, basedir=b""):             # <<<<<<<<<<<<<<
  *         basedir_str = self.byteToStr(basedir)
- *         if not basedir_str:
+ *         if not basedir_str or basedir_str=='':
 */
 
   /* function exit code */
@@ -5725,9 +5795,9 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_10__set_base_dir__
   __pyx_L1_error:;
   __Pyx_XDECREF(__pyx_t_1);
   __Pyx_XDECREF(__pyx_t_2);
-  __Pyx_XDECREF(__pyx_t_6);
   __Pyx_XDECREF(__pyx_t_7);
   __Pyx_XDECREF(__pyx_t_8);
+  __Pyx_XDECREF(__pyx_t_9);
   __Pyx_AddTraceback("ChronicleLogger.ChronicleLogger.__set_base_dir__", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = NULL;
   __pyx_L0:;
@@ -5740,7 +5810,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_10__set_base_dir__
   return __pyx_r;
 }
 
-/* "ChronicleLogger.pyx":177
+/* "ChronicleLogger.pyx":196
  *             self.__basedir__ = basedir_str
  * 
  *     def baseDir(self, basedir=None):             # <<<<<<<<<<<<<<
@@ -5788,35 +5858,35 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   {
     PyObject ** const __pyx_pyargnames[] = {&__pyx_mstate_global->__pyx_n_u_self,&__pyx_mstate_global->__pyx_n_u_basedir,0};
     const Py_ssize_t __pyx_kwds_len = (__pyx_kwds) ? __Pyx_NumKwargs_FASTCALL(__pyx_kwds) : 0;
-    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 177, __pyx_L3_error)
+    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 196, __pyx_L3_error)
     if (__pyx_kwds_len > 0) {
       switch (__pyx_nargs) {
         case  2:
         values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 177, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 196, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 177, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 196, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  0: break;
         default: goto __pyx_L5_argtuple_error;
       }
       const Py_ssize_t kwd_pos_args = __pyx_nargs;
-      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "baseDir", 0) < 0) __PYX_ERR(0, 177, __pyx_L3_error)
+      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "baseDir", 0) < 0) __PYX_ERR(0, 196, __pyx_L3_error)
       if (!values[1]) values[1] = __Pyx_NewRef(((PyObject *)Py_None));
       for (Py_ssize_t i = __pyx_nargs; i < 1; i++) {
-        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("baseDir", 0, 1, 2, i); __PYX_ERR(0, 177, __pyx_L3_error) }
+        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("baseDir", 0, 1, 2, i); __PYX_ERR(0, 196, __pyx_L3_error) }
       }
     } else {
       switch (__pyx_nargs) {
         case  2:
         values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 177, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 196, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 177, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 196, __pyx_L3_error)
         break;
         default: goto __pyx_L5_argtuple_error;
       }
@@ -5827,7 +5897,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("baseDir", 0, 1, 2, __pyx_nargs); __PYX_ERR(0, 177, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("baseDir", 0, 1, 2, __pyx_nargs); __PYX_ERR(0, 196, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -5860,7 +5930,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_12baseDir(CYTHON_U
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("baseDir", 0);
 
-  /* "ChronicleLogger.pyx":178
+  /* "ChronicleLogger.pyx":197
  * 
  *     def baseDir(self, basedir=None):
  *         if basedir is not None:             # <<<<<<<<<<<<<<
@@ -5870,7 +5940,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_12baseDir(CYTHON_U
   __pyx_t_1 = (__pyx_v_basedir != Py_None);
   if (__pyx_t_1) {
 
-    /* "ChronicleLogger.pyx":179
+    /* "ChronicleLogger.pyx":198
  *     def baseDir(self, basedir=None):
  *         if basedir is not None:
  *             self.__set_base_dir__(basedir)             # <<<<<<<<<<<<<<
@@ -5884,12 +5954,12 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_12baseDir(CYTHON_U
       PyObject *__pyx_callargs[2] = {__pyx_t_3, __pyx_v_basedir};
       __pyx_t_2 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_set_base_dir, __pyx_callargs+__pyx_t_4, (2-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
       __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
-      if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 179, __pyx_L1_error)
+      if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 198, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_2);
     }
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-    /* "ChronicleLogger.pyx":178
+    /* "ChronicleLogger.pyx":197
  * 
  *     def baseDir(self, basedir=None):
  *         if basedir is not None:             # <<<<<<<<<<<<<<
@@ -5899,7 +5969,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_12baseDir(CYTHON_U
     goto __pyx_L3;
   }
 
-  /* "ChronicleLogger.pyx":181
+  /* "ChronicleLogger.pyx":200
  *             self.__set_base_dir__(basedir)
  *         else:
  *             if self.__basedir__ is None:             # <<<<<<<<<<<<<<
@@ -5907,13 +5977,13 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_12baseDir(CYTHON_U
  *             return self.__basedir__
 */
   /*else*/ {
-    __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_basedir_2); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 181, __pyx_L1_error)
+    __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_basedir_2); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 200, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
     __pyx_t_1 = (__pyx_t_2 == Py_None);
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
     if (__pyx_t_1) {
 
-      /* "ChronicleLogger.pyx":182
+      /* "ChronicleLogger.pyx":201
  *         else:
  *             if self.__basedir__ is None:
  *                 self.__set_base_dir__()             # <<<<<<<<<<<<<<
@@ -5927,12 +5997,12 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_12baseDir(CYTHON_U
         PyObject *__pyx_callargs[2] = {__pyx_t_3, NULL};
         __pyx_t_2 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_set_base_dir, __pyx_callargs+__pyx_t_4, (1-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
         __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
-        if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 182, __pyx_L1_error)
+        if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 201, __pyx_L1_error)
         __Pyx_GOTREF(__pyx_t_2);
       }
       __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-      /* "ChronicleLogger.pyx":181
+      /* "ChronicleLogger.pyx":200
  *             self.__set_base_dir__(basedir)
  *         else:
  *             if self.__basedir__ is None:             # <<<<<<<<<<<<<<
@@ -5941,7 +6011,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_12baseDir(CYTHON_U
 */
     }
 
-    /* "ChronicleLogger.pyx":183
+    /* "ChronicleLogger.pyx":202
  *             if self.__basedir__ is None:
  *                 self.__set_base_dir__()
  *             return self.__basedir__             # <<<<<<<<<<<<<<
@@ -5949,7 +6019,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_12baseDir(CYTHON_U
  *     def __set_log_dir__(self, logdir=b""):
 */
     __Pyx_XDECREF(__pyx_r);
-    __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_basedir_2); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 183, __pyx_L1_error)
+    __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_basedir_2); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 202, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
     __pyx_r = __pyx_t_2;
     __pyx_t_2 = 0;
@@ -5957,7 +6027,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_12baseDir(CYTHON_U
   }
   __pyx_L3:;
 
-  /* "ChronicleLogger.pyx":177
+  /* "ChronicleLogger.pyx":196
  *             self.__basedir__ = basedir_str
  * 
  *     def baseDir(self, basedir=None):             # <<<<<<<<<<<<<<
@@ -5979,12 +6049,12 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_12baseDir(CYTHON_U
   return __pyx_r;
 }
 
-/* "ChronicleLogger.pyx":185
+/* "ChronicleLogger.pyx":204
  *             return self.__basedir__
  * 
  *     def __set_log_dir__(self, logdir=b""):             # <<<<<<<<<<<<<<
  *         logdir_str = self.byteToStr(logdir)
- *         if logdir_str:
+ *         if logdir_str and logdir_str!='':
 */
 
 /* Python wrapper */
@@ -6027,46 +6097,46 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   {
     PyObject ** const __pyx_pyargnames[] = {&__pyx_mstate_global->__pyx_n_u_self,&__pyx_mstate_global->__pyx_n_u_logdir,0};
     const Py_ssize_t __pyx_kwds_len = (__pyx_kwds) ? __Pyx_NumKwargs_FASTCALL(__pyx_kwds) : 0;
-    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 185, __pyx_L3_error)
+    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 204, __pyx_L3_error)
     if (__pyx_kwds_len > 0) {
       switch (__pyx_nargs) {
         case  2:
         values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 185, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 204, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 185, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 204, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  0: break;
         default: goto __pyx_L5_argtuple_error;
       }
       const Py_ssize_t kwd_pos_args = __pyx_nargs;
-      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "__set_log_dir__", 0) < 0) __PYX_ERR(0, 185, __pyx_L3_error)
-      if (!values[1]) values[1] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_kp_b__2)));
+      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "__set_log_dir__", 0) < 0) __PYX_ERR(0, 204, __pyx_L3_error)
+      if (!values[1]) values[1] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_kp_b_)));
       for (Py_ssize_t i = __pyx_nargs; i < 1; i++) {
-        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("__set_log_dir__", 0, 1, 2, i); __PYX_ERR(0, 185, __pyx_L3_error) }
+        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("__set_log_dir__", 0, 1, 2, i); __PYX_ERR(0, 204, __pyx_L3_error) }
       }
     } else {
       switch (__pyx_nargs) {
         case  2:
         values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 185, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 204, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 185, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 204, __pyx_L3_error)
         break;
         default: goto __pyx_L5_argtuple_error;
       }
-      if (!values[1]) values[1] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_kp_b__2)));
+      if (!values[1]) values[1] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_kp_b_)));
     }
     __pyx_v_self = values[0];
     __pyx_v_logdir = values[1];
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("__set_log_dir__", 0, 1, 2, __pyx_nargs); __PYX_ERR(0, 185, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("__set_log_dir__", 0, 1, 2, __pyx_nargs); __PYX_ERR(0, 204, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -6097,19 +6167,20 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_14__set_log_dir__(
   PyObject *__pyx_t_2 = NULL;
   size_t __pyx_t_3;
   int __pyx_t_4;
-  PyObject *__pyx_t_5 = NULL;
+  int __pyx_t_5;
   PyObject *__pyx_t_6 = NULL;
   PyObject *__pyx_t_7 = NULL;
+  PyObject *__pyx_t_8 = NULL;
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("__set_log_dir__", 0);
 
-  /* "ChronicleLogger.pyx":186
+  /* "ChronicleLogger.pyx":205
  * 
  *     def __set_log_dir__(self, logdir=b""):
  *         logdir_str = self.byteToStr(logdir)             # <<<<<<<<<<<<<<
- *         if logdir_str:
+ *         if logdir_str and logdir_str!='':
  *             self.__logdir__ = logdir_str
 */
   __pyx_t_2 = __pyx_v_self;
@@ -6119,196 +6190,214 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_14__set_log_dir__(
     PyObject *__pyx_callargs[2] = {__pyx_t_2, __pyx_v_logdir};
     __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_byteToStr, __pyx_callargs+__pyx_t_3, (2-__pyx_t_3) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
     __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 186, __pyx_L1_error)
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 205, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
   }
   __pyx_v_logdir_str = __pyx_t_1;
   __pyx_t_1 = 0;
 
-  /* "ChronicleLogger.pyx":187
+  /* "ChronicleLogger.pyx":206
  *     def __set_log_dir__(self, logdir=b""):
  *         logdir_str = self.byteToStr(logdir)
- *         if logdir_str:             # <<<<<<<<<<<<<<
+ *         if logdir_str and logdir_str!='':             # <<<<<<<<<<<<<<
  *             self.__logdir__ = logdir_str
  *         else:
 */
-  __pyx_t_4 = __Pyx_PyObject_IsTrue(__pyx_v_logdir_str); if (unlikely((__pyx_t_4 < 0))) __PYX_ERR(0, 187, __pyx_L1_error)
+  __pyx_t_5 = __Pyx_PyObject_IsTrue(__pyx_v_logdir_str); if (unlikely((__pyx_t_5 < 0))) __PYX_ERR(0, 206, __pyx_L1_error)
+  if (__pyx_t_5) {
+  } else {
+    __pyx_t_4 = __pyx_t_5;
+    goto __pyx_L4_bool_binop_done;
+  }
+  __pyx_t_5 = (__Pyx_PyUnicode_Equals(__pyx_v_logdir_str, __pyx_mstate_global->__pyx_kp_u_, Py_NE)); if (unlikely((__pyx_t_5 < 0))) __PYX_ERR(0, 206, __pyx_L1_error)
+  __pyx_t_4 = __pyx_t_5;
+  __pyx_L4_bool_binop_done:;
   if (__pyx_t_4) {
 
-    /* "ChronicleLogger.pyx":188
+    /* "ChronicleLogger.pyx":207
  *         logdir_str = self.byteToStr(logdir)
- *         if logdir_str:
+ *         if logdir_str and logdir_str!='':
  *             self.__logdir__ = logdir_str             # <<<<<<<<<<<<<<
  *         else:
- *             appname = self.__logname__.decode()
+ *             appname = self.__logname__.decode('utf-8')  # NEW: Explicit decode
 */
-    if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2, __pyx_v_logdir_str) < 0) __PYX_ERR(0, 188, __pyx_L1_error)
+    if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2, __pyx_v_logdir_str) < 0) __PYX_ERR(0, 207, __pyx_L1_error)
 
-    /* "ChronicleLogger.pyx":187
+    /* "ChronicleLogger.pyx":206
  *     def __set_log_dir__(self, logdir=b""):
  *         logdir_str = self.byteToStr(logdir)
- *         if logdir_str:             # <<<<<<<<<<<<<<
+ *         if logdir_str and logdir_str!='':             # <<<<<<<<<<<<<<
  *             self.__logdir__ = logdir_str
  *         else:
 */
     goto __pyx_L3;
   }
 
-  /* "ChronicleLogger.pyx":190
+  /* "ChronicleLogger.pyx":209
  *             self.__logdir__ = logdir_str
  *         else:
- *             appname = self.__logname__.decode()             # <<<<<<<<<<<<<<
+ *             appname = self.__logname__.decode('utf-8')  # NEW: Explicit decode             # <<<<<<<<<<<<<<
  *             if _Suroot.should_use_system_paths():
- *                 self.__logdir__ = f"/var/log/{appname}"
+ *                 # NEW: Replaced f-string with .format()
 */
   /*else*/ {
-    __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logname_2); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 190, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_5);
-    __pyx_t_2 = __pyx_t_5;
+    __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logname_2); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 209, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_6);
+    __pyx_t_2 = __pyx_t_6;
     __Pyx_INCREF(__pyx_t_2);
     __pyx_t_3 = 0;
     {
-      PyObject *__pyx_callargs[2] = {__pyx_t_2, NULL};
-      __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_decode, __pyx_callargs+__pyx_t_3, (1-__pyx_t_3) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+      PyObject *__pyx_callargs[2] = {__pyx_t_2, __pyx_mstate_global->__pyx_kp_u_utf_8};
+      __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_decode, __pyx_callargs+__pyx_t_3, (2-__pyx_t_3) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
       __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
-      __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 190, __pyx_L1_error)
+      __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 209, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
     }
     __pyx_v_appname = __pyx_t_1;
     __pyx_t_1 = 0;
 
-    /* "ChronicleLogger.pyx":191
+    /* "ChronicleLogger.pyx":210
  *         else:
- *             appname = self.__logname__.decode()
+ *             appname = self.__logname__.decode('utf-8')  # NEW: Explicit decode
  *             if _Suroot.should_use_system_paths():             # <<<<<<<<<<<<<<
- *                 self.__logdir__ = f"/var/log/{appname}"
- *             else:
+ *                 # NEW: Replaced f-string with .format()
+ *                 self.__logdir__ = "/var/log/{0}".format(appname)
 */
-    __pyx_t_5 = NULL;
-    __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 191, __pyx_L1_error)
+    __pyx_t_6 = NULL;
+    __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_Suroot); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 210, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
-    __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_should_use_system_paths); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 191, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_6);
+    __pyx_t_7 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_should_use_system_paths); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 210, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_7);
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
     __pyx_t_3 = 1;
     #if CYTHON_UNPACK_METHODS
-    if (unlikely(PyMethod_Check(__pyx_t_6))) {
-      __pyx_t_5 = PyMethod_GET_SELF(__pyx_t_6);
-      assert(__pyx_t_5);
-      PyObject* __pyx__function = PyMethod_GET_FUNCTION(__pyx_t_6);
-      __Pyx_INCREF(__pyx_t_5);
+    if (unlikely(PyMethod_Check(__pyx_t_7))) {
+      __pyx_t_6 = PyMethod_GET_SELF(__pyx_t_7);
+      assert(__pyx_t_6);
+      PyObject* __pyx__function = PyMethod_GET_FUNCTION(__pyx_t_7);
+      __Pyx_INCREF(__pyx_t_6);
       __Pyx_INCREF(__pyx__function);
-      __Pyx_DECREF_SET(__pyx_t_6, __pyx__function);
+      __Pyx_DECREF_SET(__pyx_t_7, __pyx__function);
       __pyx_t_3 = 0;
     }
     #endif
     {
-      PyObject *__pyx_callargs[2] = {__pyx_t_5, NULL};
-      __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_6, __pyx_callargs+__pyx_t_3, (1-__pyx_t_3) | (__pyx_t_3*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
-      __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
-      __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 191, __pyx_L1_error)
+      PyObject *__pyx_callargs[2] = {__pyx_t_6, NULL};
+      __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_7, __pyx_callargs+__pyx_t_3, (1-__pyx_t_3) | (__pyx_t_3*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+      __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
+      __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 210, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
     }
-    __pyx_t_4 = __Pyx_PyObject_IsTrue(__pyx_t_1); if (unlikely((__pyx_t_4 < 0))) __PYX_ERR(0, 191, __pyx_L1_error)
+    __pyx_t_4 = __Pyx_PyObject_IsTrue(__pyx_t_1); if (unlikely((__pyx_t_4 < 0))) __PYX_ERR(0, 210, __pyx_L1_error)
     __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
     if (__pyx_t_4) {
 
-      /* "ChronicleLogger.pyx":192
- *             appname = self.__logname__.decode()
+      /* "ChronicleLogger.pyx":212
  *             if _Suroot.should_use_system_paths():
- *                 self.__logdir__ = f"/var/log/{appname}"             # <<<<<<<<<<<<<<
+ *                 # NEW: Replaced f-string with .format()
+ *                 self.__logdir__ = "/var/log/{0}".format(appname)             # <<<<<<<<<<<<<<
  *             else:
  *                 home = os.path.expanduser("~")
 */
-      __pyx_t_1 = __Pyx_PyObject_FormatSimple(__pyx_v_appname, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 192, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_1);
-      __pyx_t_6 = __Pyx_PyUnicode_Concat(__pyx_mstate_global->__pyx_kp_u_var_log, __pyx_t_1); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 192, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_6);
-      __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-      if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2, __pyx_t_6) < 0) __PYX_ERR(0, 192, __pyx_L1_error)
-      __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-
-      /* "ChronicleLogger.pyx":191
- *         else:
- *             appname = self.__logname__.decode()
- *             if _Suroot.should_use_system_paths():             # <<<<<<<<<<<<<<
- *                 self.__logdir__ = f"/var/log/{appname}"
- *             else:
-*/
-      goto __pyx_L4;
-    }
-
-    /* "ChronicleLogger.pyx":194
- *                 self.__logdir__ = f"/var/log/{appname}"
- *             else:
- *                 home = os.path.expanduser("~")             # <<<<<<<<<<<<<<
- *                 self.__logdir__ = os.path.join(home, f".app/{appname}", "log")
- * 
-*/
-    /*else*/ {
-      __Pyx_GetModuleGlobalName(__pyx_t_5, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 194, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_5);
-      __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_5, __pyx_mstate_global->__pyx_n_u_path); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 194, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_2);
-      __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-      __pyx_t_1 = __pyx_t_2;
-      __Pyx_INCREF(__pyx_t_1);
+      __pyx_t_7 = __pyx_mstate_global->__pyx_kp_u_var_log_0;
+      __Pyx_INCREF(__pyx_t_7);
       __pyx_t_3 = 0;
       {
-        PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_mstate_global->__pyx_kp_u__5};
-        __pyx_t_6 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_expanduser, __pyx_callargs+__pyx_t_3, (2-__pyx_t_3) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
-        __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
-        __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-        if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 194, __pyx_L1_error)
-        __Pyx_GOTREF(__pyx_t_6);
+        PyObject *__pyx_callargs[2] = {__pyx_t_7, __pyx_v_appname};
+        __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_format, __pyx_callargs+__pyx_t_3, (2-__pyx_t_3) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+        __Pyx_XDECREF(__pyx_t_7); __pyx_t_7 = 0;
+        if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 212, __pyx_L1_error)
+        __Pyx_GOTREF(__pyx_t_1);
       }
-      __pyx_v_home = __pyx_t_6;
-      __pyx_t_6 = 0;
+      if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2, __pyx_t_1) < 0) __PYX_ERR(0, 212, __pyx_L1_error)
+      __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-      /* "ChronicleLogger.pyx":195
+      /* "ChronicleLogger.pyx":210
+ *         else:
+ *             appname = self.__logname__.decode('utf-8')  # NEW: Explicit decode
+ *             if _Suroot.should_use_system_paths():             # <<<<<<<<<<<<<<
+ *                 # NEW: Replaced f-string with .format()
+ *                 self.__logdir__ = "/var/log/{0}".format(appname)
+*/
+      goto __pyx_L6;
+    }
+
+    /* "ChronicleLogger.pyx":214
+ *                 self.__logdir__ = "/var/log/{0}".format(appname)
  *             else:
+ *                 home = os.path.expanduser("~")             # <<<<<<<<<<<<<<
+ *                 # NEW: Replaced f-string with .format()
+ *                 self.__logdir__ = os.path.join(home, ".app/{0}".format(appname), "log")
+*/
+    /*else*/ {
+      __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 214, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_6);
+      __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_path); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 214, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_2);
+      __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+      __pyx_t_7 = __pyx_t_2;
+      __Pyx_INCREF(__pyx_t_7);
+      __pyx_t_3 = 0;
+      {
+        PyObject *__pyx_callargs[2] = {__pyx_t_7, __pyx_mstate_global->__pyx_kp_u__4};
+        __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_expanduser, __pyx_callargs+__pyx_t_3, (2-__pyx_t_3) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+        __Pyx_XDECREF(__pyx_t_7); __pyx_t_7 = 0;
+        __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+        if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 214, __pyx_L1_error)
+        __Pyx_GOTREF(__pyx_t_1);
+      }
+      __pyx_v_home = __pyx_t_1;
+      __pyx_t_1 = 0;
+
+      /* "ChronicleLogger.pyx":216
  *                 home = os.path.expanduser("~")
- *                 self.__logdir__ = os.path.join(home, f".app/{appname}", "log")             # <<<<<<<<<<<<<<
+ *                 # NEW: Replaced f-string with .format()
+ *                 self.__logdir__ = os.path.join(home, ".app/{0}".format(appname), "log")             # <<<<<<<<<<<<<<
  * 
  *     def logDir(self, logdir=None):
 */
-      __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 195, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_1);
-      __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_path); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 195, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_5);
-      __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-      __pyx_t_2 = __pyx_t_5;
-      __Pyx_INCREF(__pyx_t_2);
-      __pyx_t_1 = __Pyx_PyObject_FormatSimple(__pyx_v_appname, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 195, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_1);
-      __pyx_t_7 = __Pyx_PyUnicode_Concat(__pyx_mstate_global->__pyx_kp_u_app_2, __pyx_t_1); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 195, __pyx_L1_error)
+      __Pyx_GetModuleGlobalName(__pyx_t_7, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 216, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_7);
-      __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+      __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_t_7, __pyx_mstate_global->__pyx_n_u_path); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 216, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_6);
+      __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+      __pyx_t_2 = __pyx_t_6;
+      __Pyx_INCREF(__pyx_t_2);
+      __pyx_t_8 = __pyx_mstate_global->__pyx_kp_u_app_0;
+      __Pyx_INCREF(__pyx_t_8);
+      __pyx_t_3 = 0;
+      {
+        PyObject *__pyx_callargs[2] = {__pyx_t_8, __pyx_v_appname};
+        __pyx_t_7 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_format, __pyx_callargs+__pyx_t_3, (2-__pyx_t_3) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+        __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
+        if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 216, __pyx_L1_error)
+        __Pyx_GOTREF(__pyx_t_7);
+      }
       __pyx_t_3 = 0;
       {
         PyObject *__pyx_callargs[4] = {__pyx_t_2, __pyx_v_home, __pyx_t_7, __pyx_mstate_global->__pyx_n_u_log};
-        __pyx_t_6 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_join, __pyx_callargs+__pyx_t_3, (4-__pyx_t_3) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+        __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_join, __pyx_callargs+__pyx_t_3, (4-__pyx_t_3) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
         __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
         __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
-        __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-        if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 195, __pyx_L1_error)
-        __Pyx_GOTREF(__pyx_t_6);
+        __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+        if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 216, __pyx_L1_error)
+        __Pyx_GOTREF(__pyx_t_1);
       }
-      if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2, __pyx_t_6) < 0) __PYX_ERR(0, 195, __pyx_L1_error)
-      __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+      if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2, __pyx_t_1) < 0) __PYX_ERR(0, 216, __pyx_L1_error)
+      __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
     }
-    __pyx_L4:;
+    __pyx_L6:;
   }
   __pyx_L3:;
 
-  /* "ChronicleLogger.pyx":185
+  /* "ChronicleLogger.pyx":204
  *             return self.__basedir__
  * 
  *     def __set_log_dir__(self, logdir=b""):             # <<<<<<<<<<<<<<
  *         logdir_str = self.byteToStr(logdir)
- *         if logdir_str:
+ *         if logdir_str and logdir_str!='':
 */
 
   /* function exit code */
@@ -6317,9 +6406,9 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_14__set_log_dir__(
   __pyx_L1_error:;
   __Pyx_XDECREF(__pyx_t_1);
   __Pyx_XDECREF(__pyx_t_2);
-  __Pyx_XDECREF(__pyx_t_5);
   __Pyx_XDECREF(__pyx_t_6);
   __Pyx_XDECREF(__pyx_t_7);
+  __Pyx_XDECREF(__pyx_t_8);
   __Pyx_AddTraceback("ChronicleLogger.ChronicleLogger.__set_log_dir__", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = NULL;
   __pyx_L0:;
@@ -6331,8 +6420,8 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_14__set_log_dir__(
   return __pyx_r;
 }
 
-/* "ChronicleLogger.pyx":197
- *                 self.__logdir__ = os.path.join(home, f".app/{appname}", "log")
+/* "ChronicleLogger.pyx":218
+ *                 self.__logdir__ = os.path.join(home, ".app/{0}".format(appname), "log")
  * 
  *     def logDir(self, logdir=None):             # <<<<<<<<<<<<<<
  *         if logdir is not None:
@@ -6379,35 +6468,35 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   {
     PyObject ** const __pyx_pyargnames[] = {&__pyx_mstate_global->__pyx_n_u_self,&__pyx_mstate_global->__pyx_n_u_logdir,0};
     const Py_ssize_t __pyx_kwds_len = (__pyx_kwds) ? __Pyx_NumKwargs_FASTCALL(__pyx_kwds) : 0;
-    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 197, __pyx_L3_error)
+    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 218, __pyx_L3_error)
     if (__pyx_kwds_len > 0) {
       switch (__pyx_nargs) {
         case  2:
         values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 197, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 218, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 197, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 218, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  0: break;
         default: goto __pyx_L5_argtuple_error;
       }
       const Py_ssize_t kwd_pos_args = __pyx_nargs;
-      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "logDir", 0) < 0) __PYX_ERR(0, 197, __pyx_L3_error)
+      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "logDir", 0) < 0) __PYX_ERR(0, 218, __pyx_L3_error)
       if (!values[1]) values[1] = __Pyx_NewRef(((PyObject *)Py_None));
       for (Py_ssize_t i = __pyx_nargs; i < 1; i++) {
-        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("logDir", 0, 1, 2, i); __PYX_ERR(0, 197, __pyx_L3_error) }
+        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("logDir", 0, 1, 2, i); __PYX_ERR(0, 218, __pyx_L3_error) }
       }
     } else {
       switch (__pyx_nargs) {
         case  2:
         values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 197, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 218, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 197, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 218, __pyx_L3_error)
         break;
         default: goto __pyx_L5_argtuple_error;
       }
@@ -6418,7 +6507,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("logDir", 0, 1, 2, __pyx_nargs); __PYX_ERR(0, 197, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("logDir", 0, 1, 2, __pyx_nargs); __PYX_ERR(0, 218, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -6451,7 +6540,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_16logDir(CYTHON_UN
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("logDir", 0);
 
-  /* "ChronicleLogger.pyx":198
+  /* "ChronicleLogger.pyx":219
  * 
  *     def logDir(self, logdir=None):
  *         if logdir is not None:             # <<<<<<<<<<<<<<
@@ -6461,7 +6550,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_16logDir(CYTHON_UN
   __pyx_t_1 = (__pyx_v_logdir != Py_None);
   if (__pyx_t_1) {
 
-    /* "ChronicleLogger.pyx":199
+    /* "ChronicleLogger.pyx":220
  *     def logDir(self, logdir=None):
  *         if logdir is not None:
  *             self.__set_log_dir__(logdir)             # <<<<<<<<<<<<<<
@@ -6475,12 +6564,12 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_16logDir(CYTHON_UN
       PyObject *__pyx_callargs[2] = {__pyx_t_3, __pyx_v_logdir};
       __pyx_t_2 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_set_log_dir, __pyx_callargs+__pyx_t_4, (2-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
       __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
-      if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 199, __pyx_L1_error)
+      if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 220, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_2);
     }
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-    /* "ChronicleLogger.pyx":198
+    /* "ChronicleLogger.pyx":219
  * 
  *     def logDir(self, logdir=None):
  *         if logdir is not None:             # <<<<<<<<<<<<<<
@@ -6490,7 +6579,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_16logDir(CYTHON_UN
     goto __pyx_L3;
   }
 
-  /* "ChronicleLogger.pyx":201
+  /* "ChronicleLogger.pyx":222
  *             self.__set_log_dir__(logdir)
  *         else:
  *             if self.__logdir__ is None:             # <<<<<<<<<<<<<<
@@ -6498,13 +6587,13 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_16logDir(CYTHON_UN
  *             return self.__logdir__
 */
   /*else*/ {
-    __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 201, __pyx_L1_error)
+    __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 222, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
     __pyx_t_1 = (__pyx_t_2 == Py_None);
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
     if (__pyx_t_1) {
 
-      /* "ChronicleLogger.pyx":202
+      /* "ChronicleLogger.pyx":223
  *         else:
  *             if self.__logdir__ is None:
  *                 self.__set_log_dir__()             # <<<<<<<<<<<<<<
@@ -6518,12 +6607,12 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_16logDir(CYTHON_UN
         PyObject *__pyx_callargs[2] = {__pyx_t_3, NULL};
         __pyx_t_2 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_set_log_dir, __pyx_callargs+__pyx_t_4, (1-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
         __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
-        if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 202, __pyx_L1_error)
+        if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 223, __pyx_L1_error)
         __Pyx_GOTREF(__pyx_t_2);
       }
       __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-      /* "ChronicleLogger.pyx":201
+      /* "ChronicleLogger.pyx":222
  *             self.__set_log_dir__(logdir)
  *         else:
  *             if self.__logdir__ is None:             # <<<<<<<<<<<<<<
@@ -6532,7 +6621,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_16logDir(CYTHON_UN
 */
     }
 
-    /* "ChronicleLogger.pyx":203
+    /* "ChronicleLogger.pyx":224
  *             if self.__logdir__ is None:
  *                 self.__set_log_dir__()
  *             return self.__logdir__             # <<<<<<<<<<<<<<
@@ -6540,7 +6629,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_16logDir(CYTHON_UN
  *     def isDebug(self):
 */
     __Pyx_XDECREF(__pyx_r);
-    __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 203, __pyx_L1_error)
+    __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 224, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
     __pyx_r = __pyx_t_2;
     __pyx_t_2 = 0;
@@ -6548,8 +6637,8 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_16logDir(CYTHON_UN
   }
   __pyx_L3:;
 
-  /* "ChronicleLogger.pyx":197
- *                 self.__logdir__ = os.path.join(home, f".app/{appname}", "log")
+  /* "ChronicleLogger.pyx":218
+ *                 self.__logdir__ = os.path.join(home, ".app/{0}".format(appname), "log")
  * 
  *     def logDir(self, logdir=None):             # <<<<<<<<<<<<<<
  *         if logdir is not None:
@@ -6570,7 +6659,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_16logDir(CYTHON_UN
   return __pyx_r;
 }
 
-/* "ChronicleLogger.pyx":205
+/* "ChronicleLogger.pyx":226
  *             return self.__logdir__
  * 
  *     def isDebug(self):             # <<<<<<<<<<<<<<
@@ -6617,32 +6706,32 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   {
     PyObject ** const __pyx_pyargnames[] = {&__pyx_mstate_global->__pyx_n_u_self,0};
     const Py_ssize_t __pyx_kwds_len = (__pyx_kwds) ? __Pyx_NumKwargs_FASTCALL(__pyx_kwds) : 0;
-    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 205, __pyx_L3_error)
+    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 226, __pyx_L3_error)
     if (__pyx_kwds_len > 0) {
       switch (__pyx_nargs) {
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 205, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 226, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  0: break;
         default: goto __pyx_L5_argtuple_error;
       }
       const Py_ssize_t kwd_pos_args = __pyx_nargs;
-      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "isDebug", 0) < 0) __PYX_ERR(0, 205, __pyx_L3_error)
+      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "isDebug", 0) < 0) __PYX_ERR(0, 226, __pyx_L3_error)
       for (Py_ssize_t i = __pyx_nargs; i < 1; i++) {
-        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("isDebug", 1, 1, 1, i); __PYX_ERR(0, 205, __pyx_L3_error) }
+        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("isDebug", 1, 1, 1, i); __PYX_ERR(0, 226, __pyx_L3_error) }
       }
     } else if (unlikely(__pyx_nargs != 1)) {
       goto __pyx_L5_argtuple_error;
     } else {
       values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 205, __pyx_L3_error)
+      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 226, __pyx_L3_error)
     }
     __pyx_v_self = values[0];
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("isDebug", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 205, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("isDebug", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 226, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -6679,30 +6768,30 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_18isDebug(CYTHON_U
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("isDebug", 0);
 
-  /* "ChronicleLogger.pyx":206
+  /* "ChronicleLogger.pyx":227
  * 
  *     def isDebug(self):
  *         if not hasattr(self, '__is_debug__'):             # <<<<<<<<<<<<<<
  *             self.__is_debug__ = (
  *                 os.getenv("DEBUG", "").lower() == "show" or
 */
-  __pyx_t_1 = __Pyx_HasAttr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_is_debug); if (unlikely(__pyx_t_1 == ((int)-1))) __PYX_ERR(0, 206, __pyx_L1_error)
+  __pyx_t_1 = __Pyx_HasAttr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_is_debug); if (unlikely(__pyx_t_1 == ((int)-1))) __PYX_ERR(0, 227, __pyx_L1_error)
   __pyx_t_2 = (!__pyx_t_1);
   if (__pyx_t_2) {
 
-    /* "ChronicleLogger.pyx":208
+    /* "ChronicleLogger.pyx":229
  *         if not hasattr(self, '__is_debug__'):
  *             self.__is_debug__ = (
  *                 os.getenv("DEBUG", "").lower() == "show" or             # <<<<<<<<<<<<<<
  *                 os.getenv("debug", "").lower() == "show"
  *             )
 */
-    __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 208, __pyx_L1_error)
+    __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 229, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_6);
-    __pyx_t_7 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_getenv); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 208, __pyx_L1_error)
+    __pyx_t_7 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_getenv); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 229, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_7);
     __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-    __pyx_t_6 = __Pyx_PyObject_Call(__pyx_t_7, __pyx_mstate_global->__pyx_tuple[0], NULL); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 208, __pyx_L1_error)
+    __pyx_t_6 = __Pyx_PyObject_Call(__pyx_t_7, __pyx_mstate_global->__pyx_tuple[0], NULL); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 229, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_6);
     __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
     __pyx_t_5 = __pyx_t_6;
@@ -6713,12 +6802,12 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_18isDebug(CYTHON_U
       __pyx_t_4 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_lower, __pyx_callargs+__pyx_t_8, (1-__pyx_t_8) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
       __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
       __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-      if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 208, __pyx_L1_error)
+      if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 229, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_4);
     }
-    __pyx_t_6 = PyObject_RichCompare(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_show, Py_EQ); __Pyx_XGOTREF(__pyx_t_6); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 208, __pyx_L1_error)
+    __pyx_t_6 = PyObject_RichCompare(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_show, Py_EQ); __Pyx_XGOTREF(__pyx_t_6); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 229, __pyx_L1_error)
     __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-    __pyx_t_2 = __Pyx_PyObject_IsTrue(__pyx_t_6); if (unlikely((__pyx_t_2 < 0))) __PYX_ERR(0, 208, __pyx_L1_error)
+    __pyx_t_2 = __Pyx_PyObject_IsTrue(__pyx_t_6); if (unlikely((__pyx_t_2 < 0))) __PYX_ERR(0, 229, __pyx_L1_error)
     if (!__pyx_t_2) {
       __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
     } else {
@@ -6728,19 +6817,19 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_18isDebug(CYTHON_U
       goto __pyx_L4_bool_binop_done;
     }
 
-    /* "ChronicleLogger.pyx":209
+    /* "ChronicleLogger.pyx":230
  *             self.__is_debug__ = (
  *                 os.getenv("DEBUG", "").lower() == "show" or
  *                 os.getenv("debug", "").lower() == "show"             # <<<<<<<<<<<<<<
  *             )
  *         return self.__is_debug__
 */
-    __Pyx_GetModuleGlobalName(__pyx_t_5, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 209, __pyx_L1_error)
+    __Pyx_GetModuleGlobalName(__pyx_t_5, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 230, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_5);
-    __pyx_t_7 = __Pyx_PyObject_GetAttrStr(__pyx_t_5, __pyx_mstate_global->__pyx_n_u_getenv); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 209, __pyx_L1_error)
+    __pyx_t_7 = __Pyx_PyObject_GetAttrStr(__pyx_t_5, __pyx_mstate_global->__pyx_n_u_getenv); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 230, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_7);
     __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-    __pyx_t_5 = __Pyx_PyObject_Call(__pyx_t_7, __pyx_mstate_global->__pyx_tuple[1], NULL); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 209, __pyx_L1_error)
+    __pyx_t_5 = __Pyx_PyObject_Call(__pyx_t_7, __pyx_mstate_global->__pyx_tuple[1], NULL); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 230, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_5);
     __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
     __pyx_t_4 = __pyx_t_5;
@@ -6751,27 +6840,27 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_18isDebug(CYTHON_U
       __pyx_t_6 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_lower, __pyx_callargs+__pyx_t_8, (1-__pyx_t_8) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
       __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
       __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-      if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 209, __pyx_L1_error)
+      if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 230, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_6);
     }
-    __pyx_t_5 = PyObject_RichCompare(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_show, Py_EQ); __Pyx_XGOTREF(__pyx_t_5); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 209, __pyx_L1_error)
+    __pyx_t_5 = PyObject_RichCompare(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_show, Py_EQ); __Pyx_XGOTREF(__pyx_t_5); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 230, __pyx_L1_error)
     __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
     __Pyx_INCREF(__pyx_t_5);
     __pyx_t_3 = __pyx_t_5;
     __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
     __pyx_L4_bool_binop_done:;
 
-    /* "ChronicleLogger.pyx":207
+    /* "ChronicleLogger.pyx":228
  *     def isDebug(self):
  *         if not hasattr(self, '__is_debug__'):
  *             self.__is_debug__ = (             # <<<<<<<<<<<<<<
  *                 os.getenv("DEBUG", "").lower() == "show" or
  *                 os.getenv("debug", "").lower() == "show"
 */
-    if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_is_debug, __pyx_t_3) < 0) __PYX_ERR(0, 207, __pyx_L1_error)
+    if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_is_debug, __pyx_t_3) < 0) __PYX_ERR(0, 228, __pyx_L1_error)
     __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-    /* "ChronicleLogger.pyx":206
+    /* "ChronicleLogger.pyx":227
  * 
  *     def isDebug(self):
  *         if not hasattr(self, '__is_debug__'):             # <<<<<<<<<<<<<<
@@ -6780,7 +6869,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_18isDebug(CYTHON_U
 */
   }
 
-  /* "ChronicleLogger.pyx":211
+  /* "ChronicleLogger.pyx":232
  *                 os.getenv("debug", "").lower() == "show"
  *             )
  *         return self.__is_debug__             # <<<<<<<<<<<<<<
@@ -6788,13 +6877,13 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_18isDebug(CYTHON_U
  *     @staticmethod
 */
   __Pyx_XDECREF(__pyx_r);
-  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_is_debug); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 211, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_is_debug); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 232, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __pyx_r = __pyx_t_3;
   __pyx_t_3 = 0;
   goto __pyx_L0;
 
-  /* "ChronicleLogger.pyx":205
+  /* "ChronicleLogger.pyx":226
  *             return self.__logdir__
  * 
  *     def isDebug(self):             # <<<<<<<<<<<<<<
@@ -6817,12 +6906,12 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_18isDebug(CYTHON_U
   return __pyx_r;
 }
 
-/* "ChronicleLogger.pyx":213
+/* "ChronicleLogger.pyx":234
  *         return self.__is_debug__
  * 
  *     @staticmethod             # <<<<<<<<<<<<<<
  *     def class_version():
- *         return f"{ChronicleLogger.CLASSNAME} v{ChronicleLogger.MAJOR_VERSION}.{ChronicleLogger.MINOR_VERSION}.{ChronicleLogger.PATCH_VERSION}"
+ *         # NEW: Replaced f-string with .format()
 */
 
 /* Python wrapper */
@@ -6847,78 +6936,43 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_20class_version(CY
   PyObject *__pyx_t_1 = NULL;
   PyObject *__pyx_t_2 = NULL;
   PyObject *__pyx_t_3 = NULL;
-  PyObject *__pyx_t_4 = NULL;
-  PyObject *__pyx_t_5 = NULL;
-  PyObject *__pyx_t_6[7];
+  size_t __pyx_t_4;
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("class_version", 0);
 
-  /* "ChronicleLogger.pyx":215
- *     @staticmethod
+  /* "ChronicleLogger.pyx":237
  *     def class_version():
- *         return f"{ChronicleLogger.CLASSNAME} v{ChronicleLogger.MAJOR_VERSION}.{ChronicleLogger.MINOR_VERSION}.{ChronicleLogger.PATCH_VERSION}"             # <<<<<<<<<<<<<<
+ *         # NEW: Replaced f-string with .format()
+ *         return "{0.CLASSNAME} v{0.MAJOR_VERSION}.{0.MINOR_VERSION}.{0.PATCH_VERSION}".format(ChronicleLogger)             # <<<<<<<<<<<<<<
  * 
  *     def ensure_directory_exists(self, dir_path):
 */
   __Pyx_XDECREF(__pyx_r);
-  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_ChronicleLogger); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 215, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_CLASSNAME); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 215, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_2);
-  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __pyx_t_1 = __Pyx_PyObject_FormatSimple(__pyx_t_2, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 215, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_1);
-  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_ChronicleLogger); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 215, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_2);
-  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_MAJOR_VERSION); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 215, __pyx_L1_error)
+  __pyx_t_2 = __pyx_mstate_global->__pyx_kp_u_0_CLASSNAME_v_0_MAJOR_VERSION_0;
+  __Pyx_INCREF(__pyx_t_2);
+  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_ChronicleLogger); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 237, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __pyx_t_2 = __Pyx_PyObject_FormatSimple(__pyx_t_3, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 215, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_2);
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_ChronicleLogger); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 215, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_MINOR_VERSION); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 215, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_4);
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_PyObject_FormatSimple(__pyx_t_4, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 215, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-  __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_ChronicleLogger); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 215, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_4);
-  __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_PATCH_VERSION); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 215, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_5);
-  __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-  __pyx_t_4 = __Pyx_PyObject_FormatSimple(__pyx_t_5, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 215, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_4);
-  __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-  __pyx_t_6[0] = __pyx_t_1;
-  __pyx_t_6[1] = __pyx_mstate_global->__pyx_kp_u_v;
-  __pyx_t_6[2] = __pyx_t_2;
-  __pyx_t_6[3] = __pyx_mstate_global->__pyx_kp_u_;
-  __pyx_t_6[4] = __pyx_t_3;
-  __pyx_t_6[5] = __pyx_mstate_global->__pyx_kp_u_;
-  __pyx_t_6[6] = __pyx_t_4;
-  __pyx_t_5 = __Pyx_PyUnicode_Join(__pyx_t_6, 7, __Pyx_PyUnicode_GET_LENGTH(__pyx_t_1) + 2 + __Pyx_PyUnicode_GET_LENGTH(__pyx_t_2) + 1 * 2 + __Pyx_PyUnicode_GET_LENGTH(__pyx_t_3) + __Pyx_PyUnicode_GET_LENGTH(__pyx_t_4), 127 | __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_1) | __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_2) | __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_3) | __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_4));
-  if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 215, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_5);
-  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-  __pyx_r = __pyx_t_5;
-  __pyx_t_5 = 0;
+  __pyx_t_4 = 0;
+  {
+    PyObject *__pyx_callargs[2] = {__pyx_t_2, __pyx_t_3};
+    __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_format, __pyx_callargs+__pyx_t_4, (2-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+    __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
+    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 237, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
+  }
+  __pyx_r = __pyx_t_1;
+  __pyx_t_1 = 0;
   goto __pyx_L0;
 
-  /* "ChronicleLogger.pyx":213
+  /* "ChronicleLogger.pyx":234
  *         return self.__is_debug__
  * 
  *     @staticmethod             # <<<<<<<<<<<<<<
  *     def class_version():
- *         return f"{ChronicleLogger.CLASSNAME} v{ChronicleLogger.MAJOR_VERSION}.{ChronicleLogger.MINOR_VERSION}.{ChronicleLogger.PATCH_VERSION}"
+ *         # NEW: Replaced f-string with .format()
 */
 
   /* function exit code */
@@ -6926,8 +6980,6 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_20class_version(CY
   __Pyx_XDECREF(__pyx_t_1);
   __Pyx_XDECREF(__pyx_t_2);
   __Pyx_XDECREF(__pyx_t_3);
-  __Pyx_XDECREF(__pyx_t_4);
-  __Pyx_XDECREF(__pyx_t_5);
   __Pyx_AddTraceback("ChronicleLogger.ChronicleLogger.class_version", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = NULL;
   __pyx_L0:;
@@ -6936,12 +6988,12 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_20class_version(CY
   return __pyx_r;
 }
 
-/* "ChronicleLogger.pyx":217
- *         return f"{ChronicleLogger.CLASSNAME} v{ChronicleLogger.MAJOR_VERSION}.{ChronicleLogger.MINOR_VERSION}.{ChronicleLogger.PATCH_VERSION}"
+/* "ChronicleLogger.pyx":239
+ *         return "{0.CLASSNAME} v{0.MAJOR_VERSION}.{0.MINOR_VERSION}.{0.PATCH_VERSION}".format(ChronicleLogger)
  * 
  *     def ensure_directory_exists(self, dir_path):             # <<<<<<<<<<<<<<
- *         if dir_path and not os.path.exists(dir_path):
- *             try:
+ *         # Example for ensure_directory_exists (around line 172)
+ *         try:
 */
 
 /* Python wrapper */
@@ -6984,39 +7036,39 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   {
     PyObject ** const __pyx_pyargnames[] = {&__pyx_mstate_global->__pyx_n_u_self,&__pyx_mstate_global->__pyx_n_u_dir_path,0};
     const Py_ssize_t __pyx_kwds_len = (__pyx_kwds) ? __Pyx_NumKwargs_FASTCALL(__pyx_kwds) : 0;
-    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 217, __pyx_L3_error)
+    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 239, __pyx_L3_error)
     if (__pyx_kwds_len > 0) {
       switch (__pyx_nargs) {
         case  2:
         values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 217, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 239, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 217, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 239, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  0: break;
         default: goto __pyx_L5_argtuple_error;
       }
       const Py_ssize_t kwd_pos_args = __pyx_nargs;
-      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "ensure_directory_exists", 0) < 0) __PYX_ERR(0, 217, __pyx_L3_error)
+      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "ensure_directory_exists", 0) < 0) __PYX_ERR(0, 239, __pyx_L3_error)
       for (Py_ssize_t i = __pyx_nargs; i < 2; i++) {
-        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("ensure_directory_exists", 1, 2, 2, i); __PYX_ERR(0, 217, __pyx_L3_error) }
+        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("ensure_directory_exists", 1, 2, 2, i); __PYX_ERR(0, 239, __pyx_L3_error) }
       }
     } else if (unlikely(__pyx_nargs != 2)) {
       goto __pyx_L5_argtuple_error;
     } else {
       values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 217, __pyx_L3_error)
+      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 239, __pyx_L3_error)
       values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 217, __pyx_L3_error)
+      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 239, __pyx_L3_error)
     }
     __pyx_v_self = values[0];
     __pyx_v_dir_path = values[1];
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("ensure_directory_exists", 1, 2, 2, __pyx_nargs); __PYX_ERR(0, 217, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("ensure_directory_exists", 1, 2, 2, __pyx_nargs); __PYX_ERR(0, 239, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -7038,348 +7090,500 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
 }
 
 static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_22ensure_directory_exists(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_self, PyObject *__pyx_v_dir_path) {
+  CYTHON_UNUSED PyObject *__pyx_v_exc_type = NULL;
+  PyObject *__pyx_v_exc_value = NULL;
+  CYTHON_UNUSED PyObject *__pyx_v_exc_tb = NULL;
   PyObject *__pyx_v_e = NULL;
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
-  int __pyx_t_1;
-  int __pyx_t_2;
+  PyObject *__pyx_t_1 = NULL;
+  PyObject *__pyx_t_2 = NULL;
   PyObject *__pyx_t_3 = NULL;
   PyObject *__pyx_t_4 = NULL;
   PyObject *__pyx_t_5 = NULL;
   PyObject *__pyx_t_6 = NULL;
-  size_t __pyx_t_7;
-  int __pyx_t_8;
+  PyObject *__pyx_t_7 = NULL;
+  size_t __pyx_t_8;
   PyObject *__pyx_t_9 = NULL;
-  PyObject *__pyx_t_10 = NULL;
-  PyObject *__pyx_t_11 = NULL;
+  int __pyx_t_10;
+  int __pyx_t_11;
   PyObject *__pyx_t_12 = NULL;
-  int __pyx_t_13;
+  PyObject *__pyx_t_13 = NULL;
   PyObject *__pyx_t_14 = NULL;
-  PyObject *__pyx_t_15 = NULL;
-  PyObject *__pyx_t_16[4];
-  PyObject *__pyx_t_17 = NULL;
-  int __pyx_t_18;
-  char const *__pyx_t_19;
-  PyObject *__pyx_t_20 = NULL;
-  PyObject *__pyx_t_21 = NULL;
-  PyObject *__pyx_t_22 = NULL;
-  PyObject *__pyx_t_23 = NULL;
-  PyObject *__pyx_t_24 = NULL;
-  PyObject *__pyx_t_25 = NULL;
+  PyObject *(*__pyx_t_15)(PyObject *);
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("ensure_directory_exists", 0);
 
-  /* "ChronicleLogger.pyx":218
- * 
+  /* "ChronicleLogger.pyx":241
  *     def ensure_directory_exists(self, dir_path):
- *         if dir_path and not os.path.exists(dir_path):             # <<<<<<<<<<<<<<
- *             try:
- *                 os.makedirs(dir_path)
+ *         # Example for ensure_directory_exists (around line 172)
+ *         try:             # <<<<<<<<<<<<<<
+ *             os.makedirs(dir_path)
+ *             print("Created directory: {0}".format(dir_path))
 */
-  __pyx_t_2 = __Pyx_PyObject_IsTrue(__pyx_v_dir_path); if (unlikely((__pyx_t_2 < 0))) __PYX_ERR(0, 218, __pyx_L1_error)
-  if (__pyx_t_2) {
-  } else {
-    __pyx_t_1 = __pyx_t_2;
-    goto __pyx_L4_bool_binop_done;
-  }
-  __Pyx_GetModuleGlobalName(__pyx_t_5, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 218, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_5);
-  __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_t_5, __pyx_mstate_global->__pyx_n_u_path); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 218, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_6);
-  __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-  __pyx_t_4 = __pyx_t_6;
-  __Pyx_INCREF(__pyx_t_4);
-  __pyx_t_7 = 0;
   {
-    PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_v_dir_path};
-    __pyx_t_3 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_exists, __pyx_callargs+__pyx_t_7, (2-__pyx_t_7) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
-    __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-    __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 218, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_3);
-  }
-  __pyx_t_2 = __Pyx_PyObject_IsTrue(__pyx_t_3); if (unlikely((__pyx_t_2 < 0))) __PYX_ERR(0, 218, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_8 = (!__pyx_t_2);
-  __pyx_t_1 = __pyx_t_8;
-  __pyx_L4_bool_binop_done:;
-  if (__pyx_t_1) {
+    __Pyx_PyThreadState_declare
+    __Pyx_PyThreadState_assign
+    __Pyx_ExceptionSave(&__pyx_t_1, &__pyx_t_2, &__pyx_t_3);
+    __Pyx_XGOTREF(__pyx_t_1);
+    __Pyx_XGOTREF(__pyx_t_2);
+    __Pyx_XGOTREF(__pyx_t_3);
+    /*try:*/ {
 
-    /* "ChronicleLogger.pyx":219
- *     def ensure_directory_exists(self, dir_path):
- *         if dir_path and not os.path.exists(dir_path):
- *             try:             # <<<<<<<<<<<<<<
- *                 os.makedirs(dir_path)
- *                 print(f"Created directory: {dir_path}")
+      /* "ChronicleLogger.pyx":242
+ *         # Example for ensure_directory_exists (around line 172)
+ *         try:
+ *             os.makedirs(dir_path)             # <<<<<<<<<<<<<<
+ *             print("Created directory: {0}".format(dir_path))
+ *         except Exception:
 */
-    {
-      __Pyx_PyThreadState_declare
-      __Pyx_PyThreadState_assign
-      __Pyx_ExceptionSave(&__pyx_t_9, &__pyx_t_10, &__pyx_t_11);
-      __Pyx_XGOTREF(__pyx_t_9);
-      __Pyx_XGOTREF(__pyx_t_10);
-      __Pyx_XGOTREF(__pyx_t_11);
-      /*try:*/ {
-
-        /* "ChronicleLogger.pyx":220
- *         if dir_path and not os.path.exists(dir_path):
- *             try:
- *                 os.makedirs(dir_path)             # <<<<<<<<<<<<<<
- *                 print(f"Created directory: {dir_path}")
- *             except Exception as e:
-*/
-        __pyx_t_6 = NULL;
-        __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 220, __pyx_L6_error)
+      __pyx_t_5 = NULL;
+      __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 242, __pyx_L3_error)
+      __Pyx_GOTREF(__pyx_t_6);
+      __pyx_t_7 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_makedirs); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 242, __pyx_L3_error)
+      __Pyx_GOTREF(__pyx_t_7);
+      __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+      __pyx_t_8 = 1;
+      #if CYTHON_UNPACK_METHODS
+      if (unlikely(PyMethod_Check(__pyx_t_7))) {
+        __pyx_t_5 = PyMethod_GET_SELF(__pyx_t_7);
+        assert(__pyx_t_5);
+        PyObject* __pyx__function = PyMethod_GET_FUNCTION(__pyx_t_7);
+        __Pyx_INCREF(__pyx_t_5);
+        __Pyx_INCREF(__pyx__function);
+        __Pyx_DECREF_SET(__pyx_t_7, __pyx__function);
+        __pyx_t_8 = 0;
+      }
+      #endif
+      {
+        PyObject *__pyx_callargs[2] = {__pyx_t_5, __pyx_v_dir_path};
+        __pyx_t_4 = __Pyx_PyObject_FastCall(__pyx_t_7, __pyx_callargs+__pyx_t_8, (2-__pyx_t_8) | (__pyx_t_8*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+        __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
+        __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+        if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 242, __pyx_L3_error)
         __Pyx_GOTREF(__pyx_t_4);
-        __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_makedirs); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 220, __pyx_L6_error)
-        __Pyx_GOTREF(__pyx_t_5);
-        __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-        __pyx_t_7 = 1;
+      }
+      __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+
+      /* "ChronicleLogger.pyx":243
+ *         try:
+ *             os.makedirs(dir_path)
+ *             print("Created directory: {0}".format(dir_path))             # <<<<<<<<<<<<<<
+ *         except Exception:
+ *             # NEW: Version-conditional exception syntax for Py2/3 compat (comma in Py2, 'as' in Py3)
+*/
+      __pyx_t_7 = NULL;
+      __Pyx_INCREF(__pyx_builtin_print);
+      __pyx_t_5 = __pyx_builtin_print; 
+      __pyx_t_9 = __pyx_mstate_global->__pyx_kp_u_Created_directory_0;
+      __Pyx_INCREF(__pyx_t_9);
+      __pyx_t_8 = 0;
+      {
+        PyObject *__pyx_callargs[2] = {__pyx_t_9, __pyx_v_dir_path};
+        __pyx_t_6 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_format, __pyx_callargs+__pyx_t_8, (2-__pyx_t_8) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+        __Pyx_XDECREF(__pyx_t_9); __pyx_t_9 = 0;
+        if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 243, __pyx_L3_error)
+        __Pyx_GOTREF(__pyx_t_6);
+      }
+      __pyx_t_8 = 1;
+      {
+        PyObject *__pyx_callargs[2] = {__pyx_t_7, __pyx_t_6};
+        __pyx_t_4 = __Pyx_PyObject_FastCall(__pyx_t_5, __pyx_callargs+__pyx_t_8, (2-__pyx_t_8) | (__pyx_t_8*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+        __Pyx_XDECREF(__pyx_t_7); __pyx_t_7 = 0;
+        __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+        __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
+        if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 243, __pyx_L3_error)
+        __Pyx_GOTREF(__pyx_t_4);
+      }
+      __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+
+      /* "ChronicleLogger.pyx":241
+ *     def ensure_directory_exists(self, dir_path):
+ *         # Example for ensure_directory_exists (around line 172)
+ *         try:             # <<<<<<<<<<<<<<
+ *             os.makedirs(dir_path)
+ *             print("Created directory: {0}".format(dir_path))
+*/
+    }
+    __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+    __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
+    __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
+    goto __pyx_L8_try_end;
+    __pyx_L3_error:;
+    __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
+    __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
+    __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
+    __Pyx_XDECREF(__pyx_t_7); __pyx_t_7 = 0;
+    __Pyx_XDECREF(__pyx_t_9); __pyx_t_9 = 0;
+
+    /* "ChronicleLogger.pyx":244
+ *             os.makedirs(dir_path)
+ *             print("Created directory: {0}".format(dir_path))
+ *         except Exception:             # <<<<<<<<<<<<<<
+ *             # NEW: Version-conditional exception syntax for Py2/3 compat (comma in Py2, 'as' in Py3)
+ *             if sys.version_info[0] < 3:
+*/
+    __pyx_t_10 = __Pyx_PyErr_ExceptionMatches(((PyObject *)(((PyTypeObject*)PyExc_Exception))));
+    if (__pyx_t_10) {
+      __Pyx_AddTraceback("ChronicleLogger.ChronicleLogger.ensure_directory_exists", __pyx_clineno, __pyx_lineno, __pyx_filename);
+      if (__Pyx_GetException(&__pyx_t_4, &__pyx_t_5, &__pyx_t_6) < 0) __PYX_ERR(0, 244, __pyx_L5_except_error)
+      __Pyx_XGOTREF(__pyx_t_4);
+      __Pyx_XGOTREF(__pyx_t_5);
+      __Pyx_XGOTREF(__pyx_t_6);
+
+      /* "ChronicleLogger.pyx":246
+ *         except Exception:
+ *             # NEW: Version-conditional exception syntax for Py2/3 compat (comma in Py2, 'as' in Py3)
+ *             if sys.version_info[0] < 3:             # <<<<<<<<<<<<<<
+ *                 exc_type, exc_value, exc_tb = sys.exc_info()
+ *                 e = exc_value  # Bind e for Py2
+*/
+      __Pyx_GetModuleGlobalName(__pyx_t_7, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 246, __pyx_L5_except_error)
+      __Pyx_GOTREF(__pyx_t_7);
+      __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_t_7, __pyx_mstate_global->__pyx_n_u_version_info); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 246, __pyx_L5_except_error)
+      __Pyx_GOTREF(__pyx_t_9);
+      __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+      __pyx_t_7 = __Pyx_GetItemInt(__pyx_t_9, 0, long, 1, __Pyx_PyLong_From_long, 0, 0, 1, 1); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 246, __pyx_L5_except_error)
+      __Pyx_GOTREF(__pyx_t_7);
+      __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
+      __pyx_t_9 = PyObject_RichCompare(__pyx_t_7, __pyx_mstate_global->__pyx_int_3, Py_LT); __Pyx_XGOTREF(__pyx_t_9); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 246, __pyx_L5_except_error)
+      __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+      __pyx_t_11 = __Pyx_PyObject_IsTrue(__pyx_t_9); if (unlikely((__pyx_t_11 < 0))) __PYX_ERR(0, 246, __pyx_L5_except_error)
+      __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
+      if (__pyx_t_11) {
+
+        /* "ChronicleLogger.pyx":247
+ *             # NEW: Version-conditional exception syntax for Py2/3 compat (comma in Py2, 'as' in Py3)
+ *             if sys.version_info[0] < 3:
+ *                 exc_type, exc_value, exc_tb = sys.exc_info()             # <<<<<<<<<<<<<<
+ *                 e = exc_value  # Bind e for Py2
+ *             else:
+*/
+        __pyx_t_7 = NULL;
+        __Pyx_GetModuleGlobalName(__pyx_t_12, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 247, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_12);
+        __pyx_t_13 = __Pyx_PyObject_GetAttrStr(__pyx_t_12, __pyx_mstate_global->__pyx_n_u_exc_info); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 247, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_13);
+        __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
+        __pyx_t_8 = 1;
         #if CYTHON_UNPACK_METHODS
-        if (unlikely(PyMethod_Check(__pyx_t_5))) {
-          __pyx_t_6 = PyMethod_GET_SELF(__pyx_t_5);
-          assert(__pyx_t_6);
-          PyObject* __pyx__function = PyMethod_GET_FUNCTION(__pyx_t_5);
-          __Pyx_INCREF(__pyx_t_6);
+        if (unlikely(PyMethod_Check(__pyx_t_13))) {
+          __pyx_t_7 = PyMethod_GET_SELF(__pyx_t_13);
+          assert(__pyx_t_7);
+          PyObject* __pyx__function = PyMethod_GET_FUNCTION(__pyx_t_13);
+          __Pyx_INCREF(__pyx_t_7);
           __Pyx_INCREF(__pyx__function);
-          __Pyx_DECREF_SET(__pyx_t_5, __pyx__function);
-          __pyx_t_7 = 0;
+          __Pyx_DECREF_SET(__pyx_t_13, __pyx__function);
+          __pyx_t_8 = 0;
         }
         #endif
         {
-          PyObject *__pyx_callargs[2] = {__pyx_t_6, __pyx_v_dir_path};
-          __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_5, __pyx_callargs+__pyx_t_7, (2-__pyx_t_7) | (__pyx_t_7*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
-          __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
-          __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-          if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 220, __pyx_L6_error)
-          __Pyx_GOTREF(__pyx_t_3);
+          PyObject *__pyx_callargs[2] = {__pyx_t_7, NULL};
+          __pyx_t_9 = __Pyx_PyObject_FastCall(__pyx_t_13, __pyx_callargs+__pyx_t_8, (1-__pyx_t_8) | (__pyx_t_8*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+          __Pyx_XDECREF(__pyx_t_7); __pyx_t_7 = 0;
+          __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
+          if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 247, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_9);
         }
-        __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-
-        /* "ChronicleLogger.pyx":221
- *             try:
- *                 os.makedirs(dir_path)
- *                 print(f"Created directory: {dir_path}")             # <<<<<<<<<<<<<<
- *             except Exception as e:
- *                 self.log_message(f"Failed to create directory {dir_path}: {e}", level="ERROR")
-*/
-        __pyx_t_5 = NULL;
-        __Pyx_INCREF(__pyx_builtin_print);
-        __pyx_t_6 = __pyx_builtin_print; 
-        __pyx_t_4 = __Pyx_PyObject_FormatSimple(__pyx_v_dir_path, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 221, __pyx_L6_error)
-        __Pyx_GOTREF(__pyx_t_4);
-        __pyx_t_12 = __Pyx_PyUnicode_Concat(__pyx_mstate_global->__pyx_kp_u_Created_directory, __pyx_t_4); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 221, __pyx_L6_error)
-        __Pyx_GOTREF(__pyx_t_12);
-        __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-        __pyx_t_7 = 1;
-        {
-          PyObject *__pyx_callargs[2] = {__pyx_t_5, __pyx_t_12};
-          __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_6, __pyx_callargs+__pyx_t_7, (2-__pyx_t_7) | (__pyx_t_7*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
-          __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
-          __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
-          __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-          if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 221, __pyx_L6_error)
-          __Pyx_GOTREF(__pyx_t_3);
+        if ((likely(PyTuple_CheckExact(__pyx_t_9))) || (PyList_CheckExact(__pyx_t_9))) {
+          PyObject* sequence = __pyx_t_9;
+          Py_ssize_t size = __Pyx_PySequence_SIZE(sequence);
+          if (unlikely(size != 3)) {
+            if (size > 3) __Pyx_RaiseTooManyValuesError(3);
+            else if (size >= 0) __Pyx_RaiseNeedMoreValuesError(size);
+            __PYX_ERR(0, 247, __pyx_L5_except_error)
+          }
+          #if CYTHON_ASSUME_SAFE_MACROS && !CYTHON_AVOID_BORROWED_REFS
+          if (likely(PyTuple_CheckExact(sequence))) {
+            __pyx_t_13 = PyTuple_GET_ITEM(sequence, 0);
+            __Pyx_INCREF(__pyx_t_13);
+            __pyx_t_7 = PyTuple_GET_ITEM(sequence, 1);
+            __Pyx_INCREF(__pyx_t_7);
+            __pyx_t_12 = PyTuple_GET_ITEM(sequence, 2);
+            __Pyx_INCREF(__pyx_t_12);
+          } else {
+            __pyx_t_13 = __Pyx_PyList_GetItemRef(sequence, 0);
+            if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 247, __pyx_L5_except_error)
+            __Pyx_XGOTREF(__pyx_t_13);
+            __pyx_t_7 = __Pyx_PyList_GetItemRef(sequence, 1);
+            if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 247, __pyx_L5_except_error)
+            __Pyx_XGOTREF(__pyx_t_7);
+            __pyx_t_12 = __Pyx_PyList_GetItemRef(sequence, 2);
+            if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 247, __pyx_L5_except_error)
+            __Pyx_XGOTREF(__pyx_t_12);
+          }
+          #else
+          __pyx_t_13 = __Pyx_PySequence_ITEM(sequence, 0); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 247, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_13);
+          __pyx_t_7 = __Pyx_PySequence_ITEM(sequence, 1); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 247, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_7);
+          __pyx_t_12 = __Pyx_PySequence_ITEM(sequence, 2); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 247, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_12);
+          #endif
+          __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
+        } else {
+          Py_ssize_t index = -1;
+          __pyx_t_14 = PyObject_GetIter(__pyx_t_9); if (unlikely(!__pyx_t_14)) __PYX_ERR(0, 247, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_14);
+          __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
+          __pyx_t_15 = (CYTHON_COMPILING_IN_LIMITED_API) ? PyIter_Next : __Pyx_PyObject_GetIterNextFunc(__pyx_t_14);
+          index = 0; __pyx_t_13 = __pyx_t_15(__pyx_t_14); if (unlikely(!__pyx_t_13)) goto __pyx_L12_unpacking_failed;
+          __Pyx_GOTREF(__pyx_t_13);
+          index = 1; __pyx_t_7 = __pyx_t_15(__pyx_t_14); if (unlikely(!__pyx_t_7)) goto __pyx_L12_unpacking_failed;
+          __Pyx_GOTREF(__pyx_t_7);
+          index = 2; __pyx_t_12 = __pyx_t_15(__pyx_t_14); if (unlikely(!__pyx_t_12)) goto __pyx_L12_unpacking_failed;
+          __Pyx_GOTREF(__pyx_t_12);
+          if (__Pyx_IternextUnpackEndCheck(__pyx_t_15(__pyx_t_14), 3) < 0) __PYX_ERR(0, 247, __pyx_L5_except_error)
+          __pyx_t_15 = NULL;
+          __Pyx_DECREF(__pyx_t_14); __pyx_t_14 = 0;
+          goto __pyx_L13_unpacking_done;
+          __pyx_L12_unpacking_failed:;
+          __Pyx_DECREF(__pyx_t_14); __pyx_t_14 = 0;
+          __pyx_t_15 = NULL;
+          if (__Pyx_IterFinish() == 0) __Pyx_RaiseNeedMoreValuesError(index);
+          __PYX_ERR(0, 247, __pyx_L5_except_error)
+          __pyx_L13_unpacking_done:;
         }
-        __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+        __pyx_v_exc_type = __pyx_t_13;
+        __pyx_t_13 = 0;
+        __pyx_v_exc_value = __pyx_t_7;
+        __pyx_t_7 = 0;
+        __pyx_v_exc_tb = __pyx_t_12;
+        __pyx_t_12 = 0;
 
-        /* "ChronicleLogger.pyx":219
- *     def ensure_directory_exists(self, dir_path):
- *         if dir_path and not os.path.exists(dir_path):
- *             try:             # <<<<<<<<<<<<<<
- *                 os.makedirs(dir_path)
- *                 print(f"Created directory: {dir_path}")
+        /* "ChronicleLogger.pyx":248
+ *             if sys.version_info[0] < 3:
+ *                 exc_type, exc_value, exc_tb = sys.exc_info()
+ *                 e = exc_value  # Bind e for Py2             # <<<<<<<<<<<<<<
+ *             else:
+ *                 exc_type, exc_value, exc_tb = sys.exc_info()
 */
+        __Pyx_INCREF(__pyx_v_exc_value);
+        __pyx_v_e = __pyx_v_exc_value;
+
+        /* "ChronicleLogger.pyx":246
+ *         except Exception:
+ *             # NEW: Version-conditional exception syntax for Py2/3 compat (comma in Py2, 'as' in Py3)
+ *             if sys.version_info[0] < 3:             # <<<<<<<<<<<<<<
+ *                 exc_type, exc_value, exc_tb = sys.exc_info()
+ *                 e = exc_value  # Bind e for Py2
+*/
+        goto __pyx_L11;
       }
-      __Pyx_XDECREF(__pyx_t_9); __pyx_t_9 = 0;
-      __Pyx_XDECREF(__pyx_t_10); __pyx_t_10 = 0;
-      __Pyx_XDECREF(__pyx_t_11); __pyx_t_11 = 0;
-      goto __pyx_L11_try_end;
-      __pyx_L6_error:;
-      __Pyx_XDECREF(__pyx_t_12); __pyx_t_12 = 0;
-      __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
-      __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-      __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
-      __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
 
-      /* "ChronicleLogger.pyx":222
- *                 os.makedirs(dir_path)
- *                 print(f"Created directory: {dir_path}")
- *             except Exception as e:             # <<<<<<<<<<<<<<
- *                 self.log_message(f"Failed to create directory {dir_path}: {e}", level="ERROR")
+      /* "ChronicleLogger.pyx":250
+ *                 e = exc_value  # Bind e for Py2
+ *             else:
+ *                 exc_type, exc_value, exc_tb = sys.exc_info()             # <<<<<<<<<<<<<<
+ *                 e = exc_value  # Use as e implicitly via exc_info for consistency
+ *             self.log_message("Failed to create directory {0}: {1}".format(dir_path, e), level="ERROR")
+*/
+      /*else*/ {
+        __pyx_t_12 = NULL;
+        __Pyx_GetModuleGlobalName(__pyx_t_7, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 250, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_7);
+        __pyx_t_13 = __Pyx_PyObject_GetAttrStr(__pyx_t_7, __pyx_mstate_global->__pyx_n_u_exc_info); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 250, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_13);
+        __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+        __pyx_t_8 = 1;
+        #if CYTHON_UNPACK_METHODS
+        if (unlikely(PyMethod_Check(__pyx_t_13))) {
+          __pyx_t_12 = PyMethod_GET_SELF(__pyx_t_13);
+          assert(__pyx_t_12);
+          PyObject* __pyx__function = PyMethod_GET_FUNCTION(__pyx_t_13);
+          __Pyx_INCREF(__pyx_t_12);
+          __Pyx_INCREF(__pyx__function);
+          __Pyx_DECREF_SET(__pyx_t_13, __pyx__function);
+          __pyx_t_8 = 0;
+        }
+        #endif
+        {
+          PyObject *__pyx_callargs[2] = {__pyx_t_12, NULL};
+          __pyx_t_9 = __Pyx_PyObject_FastCall(__pyx_t_13, __pyx_callargs+__pyx_t_8, (1-__pyx_t_8) | (__pyx_t_8*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+          __Pyx_XDECREF(__pyx_t_12); __pyx_t_12 = 0;
+          __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
+          if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 250, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_9);
+        }
+        if ((likely(PyTuple_CheckExact(__pyx_t_9))) || (PyList_CheckExact(__pyx_t_9))) {
+          PyObject* sequence = __pyx_t_9;
+          Py_ssize_t size = __Pyx_PySequence_SIZE(sequence);
+          if (unlikely(size != 3)) {
+            if (size > 3) __Pyx_RaiseTooManyValuesError(3);
+            else if (size >= 0) __Pyx_RaiseNeedMoreValuesError(size);
+            __PYX_ERR(0, 250, __pyx_L5_except_error)
+          }
+          #if CYTHON_ASSUME_SAFE_MACROS && !CYTHON_AVOID_BORROWED_REFS
+          if (likely(PyTuple_CheckExact(sequence))) {
+            __pyx_t_13 = PyTuple_GET_ITEM(sequence, 0);
+            __Pyx_INCREF(__pyx_t_13);
+            __pyx_t_12 = PyTuple_GET_ITEM(sequence, 1);
+            __Pyx_INCREF(__pyx_t_12);
+            __pyx_t_7 = PyTuple_GET_ITEM(sequence, 2);
+            __Pyx_INCREF(__pyx_t_7);
+          } else {
+            __pyx_t_13 = __Pyx_PyList_GetItemRef(sequence, 0);
+            if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 250, __pyx_L5_except_error)
+            __Pyx_XGOTREF(__pyx_t_13);
+            __pyx_t_12 = __Pyx_PyList_GetItemRef(sequence, 1);
+            if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 250, __pyx_L5_except_error)
+            __Pyx_XGOTREF(__pyx_t_12);
+            __pyx_t_7 = __Pyx_PyList_GetItemRef(sequence, 2);
+            if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 250, __pyx_L5_except_error)
+            __Pyx_XGOTREF(__pyx_t_7);
+          }
+          #else
+          __pyx_t_13 = __Pyx_PySequence_ITEM(sequence, 0); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 250, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_13);
+          __pyx_t_12 = __Pyx_PySequence_ITEM(sequence, 1); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 250, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_12);
+          __pyx_t_7 = __Pyx_PySequence_ITEM(sequence, 2); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 250, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_7);
+          #endif
+          __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
+        } else {
+          Py_ssize_t index = -1;
+          __pyx_t_14 = PyObject_GetIter(__pyx_t_9); if (unlikely(!__pyx_t_14)) __PYX_ERR(0, 250, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_14);
+          __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
+          __pyx_t_15 = (CYTHON_COMPILING_IN_LIMITED_API) ? PyIter_Next : __Pyx_PyObject_GetIterNextFunc(__pyx_t_14);
+          index = 0; __pyx_t_13 = __pyx_t_15(__pyx_t_14); if (unlikely(!__pyx_t_13)) goto __pyx_L14_unpacking_failed;
+          __Pyx_GOTREF(__pyx_t_13);
+          index = 1; __pyx_t_12 = __pyx_t_15(__pyx_t_14); if (unlikely(!__pyx_t_12)) goto __pyx_L14_unpacking_failed;
+          __Pyx_GOTREF(__pyx_t_12);
+          index = 2; __pyx_t_7 = __pyx_t_15(__pyx_t_14); if (unlikely(!__pyx_t_7)) goto __pyx_L14_unpacking_failed;
+          __Pyx_GOTREF(__pyx_t_7);
+          if (__Pyx_IternextUnpackEndCheck(__pyx_t_15(__pyx_t_14), 3) < 0) __PYX_ERR(0, 250, __pyx_L5_except_error)
+          __pyx_t_15 = NULL;
+          __Pyx_DECREF(__pyx_t_14); __pyx_t_14 = 0;
+          goto __pyx_L15_unpacking_done;
+          __pyx_L14_unpacking_failed:;
+          __Pyx_DECREF(__pyx_t_14); __pyx_t_14 = 0;
+          __pyx_t_15 = NULL;
+          if (__Pyx_IterFinish() == 0) __Pyx_RaiseNeedMoreValuesError(index);
+          __PYX_ERR(0, 250, __pyx_L5_except_error)
+          __pyx_L15_unpacking_done:;
+        }
+        __pyx_v_exc_type = __pyx_t_13;
+        __pyx_t_13 = 0;
+        __pyx_v_exc_value = __pyx_t_12;
+        __pyx_t_12 = 0;
+        __pyx_v_exc_tb = __pyx_t_7;
+        __pyx_t_7 = 0;
+
+        /* "ChronicleLogger.pyx":251
+ *             else:
+ *                 exc_type, exc_value, exc_tb = sys.exc_info()
+ *                 e = exc_value  # Use as e implicitly via exc_info for consistency             # <<<<<<<<<<<<<<
+ *             self.log_message("Failed to create directory {0}: {1}".format(dir_path, e), level="ERROR")
  * 
 */
-      __pyx_t_13 = __Pyx_PyErr_ExceptionMatches(((PyObject *)(((PyTypeObject*)PyExc_Exception))));
-      if (__pyx_t_13) {
-        __Pyx_AddTraceback("ChronicleLogger.ChronicleLogger.ensure_directory_exists", __pyx_clineno, __pyx_lineno, __pyx_filename);
-        if (__Pyx_GetException(&__pyx_t_3, &__pyx_t_6, &__pyx_t_12) < 0) __PYX_ERR(0, 222, __pyx_L8_except_error)
-        __Pyx_XGOTREF(__pyx_t_3);
-        __Pyx_XGOTREF(__pyx_t_6);
-        __Pyx_XGOTREF(__pyx_t_12);
-        __Pyx_INCREF(__pyx_t_6);
-        __pyx_v_e = __pyx_t_6;
-        /*try:*/ {
+        __Pyx_INCREF(__pyx_v_exc_value);
+        __pyx_v_e = __pyx_v_exc_value;
+      }
+      __pyx_L11:;
 
-          /* "ChronicleLogger.pyx":223
- *                 print(f"Created directory: {dir_path}")
- *             except Exception as e:
- *                 self.log_message(f"Failed to create directory {dir_path}: {e}", level="ERROR")             # <<<<<<<<<<<<<<
+      /* "ChronicleLogger.pyx":252
+ *                 exc_type, exc_value, exc_tb = sys.exc_info()
+ *                 e = exc_value  # Use as e implicitly via exc_info for consistency
+ *             self.log_message("Failed to create directory {0}: {1}".format(dir_path, e), level="ERROR")             # <<<<<<<<<<<<<<
  * 
  *     def _get_log_filename(self):
 */
-          __pyx_t_4 = __pyx_v_self;
-          __Pyx_INCREF(__pyx_t_4);
-          __pyx_t_14 = __Pyx_PyObject_FormatSimple(__pyx_v_dir_path, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_14)) __PYX_ERR(0, 223, __pyx_L17_error)
-          __Pyx_GOTREF(__pyx_t_14);
-          __pyx_t_15 = __Pyx_PyObject_FormatSimple(__pyx_v_e, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_15)) __PYX_ERR(0, 223, __pyx_L17_error)
-          __Pyx_GOTREF(__pyx_t_15);
-          __pyx_t_16[0] = __pyx_mstate_global->__pyx_kp_u_Failed_to_create_directory;
-          __pyx_t_16[1] = __pyx_t_14;
-          __pyx_t_16[2] = __pyx_mstate_global->__pyx_kp_u__6;
-          __pyx_t_16[3] = __pyx_t_15;
-          __pyx_t_17 = __Pyx_PyUnicode_Join(__pyx_t_16, 4, 27 + __Pyx_PyUnicode_GET_LENGTH(__pyx_t_14) + 2 + __Pyx_PyUnicode_GET_LENGTH(__pyx_t_15), 127 | __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_14) | __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_15));
-          if (unlikely(!__pyx_t_17)) __PYX_ERR(0, 223, __pyx_L17_error)
-          __Pyx_GOTREF(__pyx_t_17);
-          __Pyx_DECREF(__pyx_t_14); __pyx_t_14 = 0;
-          __Pyx_DECREF(__pyx_t_15); __pyx_t_15 = 0;
-          __pyx_t_7 = 0;
-          {
-            PyObject *__pyx_callargs[2 + ((CYTHON_VECTORCALL) ? 1 : 0)] = {__pyx_t_4, __pyx_t_17};
-            __pyx_t_15 = __Pyx_MakeVectorcallBuilderKwds(1); if (unlikely(!__pyx_t_15)) __PYX_ERR(0, 223, __pyx_L17_error)
-            __Pyx_GOTREF(__pyx_t_15);
-            if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_level, __pyx_mstate_global->__pyx_n_u_ERROR, __pyx_t_15, __pyx_callargs+2, 0) < 0) __PYX_ERR(0, 223, __pyx_L17_error)
-            __pyx_t_5 = __Pyx_Object_VectorcallMethod_CallFromBuilder(__pyx_mstate_global->__pyx_n_u_log_message, __pyx_callargs+__pyx_t_7, (2-__pyx_t_7) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET), __pyx_t_15);
-            __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-            __Pyx_DECREF(__pyx_t_17); __pyx_t_17 = 0;
-            __Pyx_DECREF(__pyx_t_15); __pyx_t_15 = 0;
-            if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 223, __pyx_L17_error)
-            __Pyx_GOTREF(__pyx_t_5);
-          }
-          __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-        }
-
-        /* "ChronicleLogger.pyx":222
- *                 os.makedirs(dir_path)
- *                 print(f"Created directory: {dir_path}")
- *             except Exception as e:             # <<<<<<<<<<<<<<
- *                 self.log_message(f"Failed to create directory {dir_path}: {e}", level="ERROR")
- * 
-*/
-        /*finally:*/ {
-          /*normal exit:*/{
-            __Pyx_DECREF(__pyx_v_e); __pyx_v_e = 0;
-            goto __pyx_L18;
-          }
-          __pyx_L17_error:;
-          /*exception exit:*/{
-            __Pyx_PyThreadState_declare
-            __Pyx_PyThreadState_assign
-            __pyx_t_20 = 0; __pyx_t_21 = 0; __pyx_t_22 = 0; __pyx_t_23 = 0; __pyx_t_24 = 0; __pyx_t_25 = 0;
-            __Pyx_XDECREF(__pyx_t_14); __pyx_t_14 = 0;
-            __Pyx_XDECREF(__pyx_t_15); __pyx_t_15 = 0;
-            __Pyx_XDECREF(__pyx_t_17); __pyx_t_17 = 0;
-            __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-            __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
-             __Pyx_ExceptionSwap(&__pyx_t_23, &__pyx_t_24, &__pyx_t_25);
-            if ( unlikely(__Pyx_GetException(&__pyx_t_20, &__pyx_t_21, &__pyx_t_22) < 0)) __Pyx_ErrFetch(&__pyx_t_20, &__pyx_t_21, &__pyx_t_22);
-            __Pyx_XGOTREF(__pyx_t_20);
-            __Pyx_XGOTREF(__pyx_t_21);
-            __Pyx_XGOTREF(__pyx_t_22);
-            __Pyx_XGOTREF(__pyx_t_23);
-            __Pyx_XGOTREF(__pyx_t_24);
-            __Pyx_XGOTREF(__pyx_t_25);
-            __pyx_t_13 = __pyx_lineno; __pyx_t_18 = __pyx_clineno; __pyx_t_19 = __pyx_filename;
-            {
-              __Pyx_DECREF(__pyx_v_e); __pyx_v_e = 0;
-            }
-            __Pyx_XGIVEREF(__pyx_t_23);
-            __Pyx_XGIVEREF(__pyx_t_24);
-            __Pyx_XGIVEREF(__pyx_t_25);
-            __Pyx_ExceptionReset(__pyx_t_23, __pyx_t_24, __pyx_t_25);
-            __Pyx_XGIVEREF(__pyx_t_20);
-            __Pyx_XGIVEREF(__pyx_t_21);
-            __Pyx_XGIVEREF(__pyx_t_22);
-            __Pyx_ErrRestore(__pyx_t_20, __pyx_t_21, __pyx_t_22);
-            __pyx_t_20 = 0; __pyx_t_21 = 0; __pyx_t_22 = 0; __pyx_t_23 = 0; __pyx_t_24 = 0; __pyx_t_25 = 0;
-            __pyx_lineno = __pyx_t_13; __pyx_clineno = __pyx_t_18; __pyx_filename = __pyx_t_19;
-            goto __pyx_L8_except_error;
-          }
-          __pyx_L18:;
-        }
-        __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
-        __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
-        __Pyx_XDECREF(__pyx_t_12); __pyx_t_12 = 0;
-        goto __pyx_L7_exception_handled;
+      __pyx_t_7 = __pyx_v_self;
+      __Pyx_INCREF(__pyx_t_7);
+      __pyx_t_13 = __pyx_mstate_global->__pyx_kp_u_Failed_to_create_directory_0_1;
+      __Pyx_INCREF(__pyx_t_13);
+      __pyx_t_8 = 0;
+      {
+        PyObject *__pyx_callargs[3] = {__pyx_t_13, __pyx_v_dir_path, __pyx_v_e};
+        __pyx_t_12 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_format, __pyx_callargs+__pyx_t_8, (3-__pyx_t_8) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+        __Pyx_XDECREF(__pyx_t_13); __pyx_t_13 = 0;
+        if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 252, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_12);
       }
-      goto __pyx_L8_except_error;
-
-      /* "ChronicleLogger.pyx":219
- *     def ensure_directory_exists(self, dir_path):
- *         if dir_path and not os.path.exists(dir_path):
- *             try:             # <<<<<<<<<<<<<<
- *                 os.makedirs(dir_path)
- *                 print(f"Created directory: {dir_path}")
-*/
-      __pyx_L8_except_error:;
-      __Pyx_XGIVEREF(__pyx_t_9);
-      __Pyx_XGIVEREF(__pyx_t_10);
-      __Pyx_XGIVEREF(__pyx_t_11);
-      __Pyx_ExceptionReset(__pyx_t_9, __pyx_t_10, __pyx_t_11);
-      goto __pyx_L1_error;
-      __pyx_L7_exception_handled:;
-      __Pyx_XGIVEREF(__pyx_t_9);
-      __Pyx_XGIVEREF(__pyx_t_10);
-      __Pyx_XGIVEREF(__pyx_t_11);
-      __Pyx_ExceptionReset(__pyx_t_9, __pyx_t_10, __pyx_t_11);
-      __pyx_L11_try_end:;
+      __pyx_t_8 = 0;
+      {
+        PyObject *__pyx_callargs[2 + ((CYTHON_VECTORCALL) ? 1 : 0)] = {__pyx_t_7, __pyx_t_12};
+        __pyx_t_13 = __Pyx_MakeVectorcallBuilderKwds(1); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 252, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_13);
+        if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_level, __pyx_mstate_global->__pyx_n_u_ERROR, __pyx_t_13, __pyx_callargs+2, 0) < 0) __PYX_ERR(0, 252, __pyx_L5_except_error)
+        __pyx_t_9 = __Pyx_Object_VectorcallMethod_CallFromBuilder(__pyx_mstate_global->__pyx_n_u_log_message, __pyx_callargs+__pyx_t_8, (2-__pyx_t_8) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET), __pyx_t_13);
+        __Pyx_XDECREF(__pyx_t_7); __pyx_t_7 = 0;
+        __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
+        __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
+        if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 252, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_9);
+      }
+      __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
+      __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
+      __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
+      __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
+      goto __pyx_L4_exception_handled;
     }
+    goto __pyx_L5_except_error;
 
-    /* "ChronicleLogger.pyx":218
- * 
+    /* "ChronicleLogger.pyx":241
  *     def ensure_directory_exists(self, dir_path):
- *         if dir_path and not os.path.exists(dir_path):             # <<<<<<<<<<<<<<
- *             try:
- *                 os.makedirs(dir_path)
+ *         # Example for ensure_directory_exists (around line 172)
+ *         try:             # <<<<<<<<<<<<<<
+ *             os.makedirs(dir_path)
+ *             print("Created directory: {0}".format(dir_path))
 */
+    __pyx_L5_except_error:;
+    __Pyx_XGIVEREF(__pyx_t_1);
+    __Pyx_XGIVEREF(__pyx_t_2);
+    __Pyx_XGIVEREF(__pyx_t_3);
+    __Pyx_ExceptionReset(__pyx_t_1, __pyx_t_2, __pyx_t_3);
+    goto __pyx_L1_error;
+    __pyx_L4_exception_handled:;
+    __Pyx_XGIVEREF(__pyx_t_1);
+    __Pyx_XGIVEREF(__pyx_t_2);
+    __Pyx_XGIVEREF(__pyx_t_3);
+    __Pyx_ExceptionReset(__pyx_t_1, __pyx_t_2, __pyx_t_3);
+    __pyx_L8_try_end:;
   }
 
-  /* "ChronicleLogger.pyx":217
- *         return f"{ChronicleLogger.CLASSNAME} v{ChronicleLogger.MAJOR_VERSION}.{ChronicleLogger.MINOR_VERSION}.{ChronicleLogger.PATCH_VERSION}"
+  /* "ChronicleLogger.pyx":239
+ *         return "{0.CLASSNAME} v{0.MAJOR_VERSION}.{0.MINOR_VERSION}.{0.PATCH_VERSION}".format(ChronicleLogger)
  * 
  *     def ensure_directory_exists(self, dir_path):             # <<<<<<<<<<<<<<
- *         if dir_path and not os.path.exists(dir_path):
- *             try:
+ *         # Example for ensure_directory_exists (around line 172)
+ *         try:
 */
 
   /* function exit code */
   __pyx_r = Py_None; __Pyx_INCREF(Py_None);
   goto __pyx_L0;
   __pyx_L1_error:;
-  __Pyx_XDECREF(__pyx_t_3);
   __Pyx_XDECREF(__pyx_t_4);
   __Pyx_XDECREF(__pyx_t_5);
   __Pyx_XDECREF(__pyx_t_6);
+  __Pyx_XDECREF(__pyx_t_7);
+  __Pyx_XDECREF(__pyx_t_9);
   __Pyx_XDECREF(__pyx_t_12);
+  __Pyx_XDECREF(__pyx_t_13);
   __Pyx_XDECREF(__pyx_t_14);
-  __Pyx_XDECREF(__pyx_t_15);
-  __Pyx_XDECREF(__pyx_t_17);
   __Pyx_AddTraceback("ChronicleLogger.ChronicleLogger.ensure_directory_exists", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = NULL;
   __pyx_L0:;
+  __Pyx_XDECREF(__pyx_v_exc_type);
+  __Pyx_XDECREF(__pyx_v_exc_value);
+  __Pyx_XDECREF(__pyx_v_exc_tb);
   __Pyx_XDECREF(__pyx_v_e);
   __Pyx_XGIVEREF(__pyx_r);
   __Pyx_RefNannyFinishContext();
   return __pyx_r;
 }
 
-/* "ChronicleLogger.pyx":225
- *                 self.log_message(f"Failed to create directory {dir_path}: {e}", level="ERROR")
+/* "ChronicleLogger.pyx":254
+ *             self.log_message("Failed to create directory {0}: {1}".format(dir_path, e), level="ERROR")
  * 
  *     def _get_log_filename(self):             # <<<<<<<<<<<<<<
  *         date_str = datetime.now().strftime('%Y%m%d')
- *         filename = f"{self.__logdir__}/{self.__logname__.decode()}-{date_str}.log"
+ *         # NEW: Replaced f-string with .format(); explicit decode/encode for path handling
 */
 
 /* Python wrapper */
@@ -7421,32 +7625,32 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   {
     PyObject ** const __pyx_pyargnames[] = {&__pyx_mstate_global->__pyx_n_u_self,0};
     const Py_ssize_t __pyx_kwds_len = (__pyx_kwds) ? __Pyx_NumKwargs_FASTCALL(__pyx_kwds) : 0;
-    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 225, __pyx_L3_error)
+    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 254, __pyx_L3_error)
     if (__pyx_kwds_len > 0) {
       switch (__pyx_nargs) {
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 225, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 254, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  0: break;
         default: goto __pyx_L5_argtuple_error;
       }
       const Py_ssize_t kwd_pos_args = __pyx_nargs;
-      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "_get_log_filename", 0) < 0) __PYX_ERR(0, 225, __pyx_L3_error)
+      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "_get_log_filename", 0) < 0) __PYX_ERR(0, 254, __pyx_L3_error)
       for (Py_ssize_t i = __pyx_nargs; i < 1; i++) {
-        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("_get_log_filename", 1, 1, 1, i); __PYX_ERR(0, 225, __pyx_L3_error) }
+        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("_get_log_filename", 1, 1, 1, i); __PYX_ERR(0, 254, __pyx_L3_error) }
       }
     } else if (unlikely(__pyx_nargs != 1)) {
       goto __pyx_L5_argtuple_error;
     } else {
       values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 225, __pyx_L3_error)
+      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 254, __pyx_L3_error)
     }
     __pyx_v_self = values[0];
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("_get_log_filename", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 225, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("_get_log_filename", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 254, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -7469,6 +7673,8 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
 
 static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_24_get_log_filename(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_self) {
   PyObject *__pyx_v_date_str = NULL;
+  PyObject *__pyx_v_dir_decoded = NULL;
+  PyObject *__pyx_v_name_decoded = NULL;
   PyObject *__pyx_v_filename = NULL;
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
@@ -7479,23 +7685,23 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_24_get_log_filenam
   PyObject *__pyx_t_5 = NULL;
   PyObject *__pyx_t_6 = NULL;
   size_t __pyx_t_7;
-  PyObject *__pyx_t_8[6];
+  int __pyx_t_8;
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("_get_log_filename", 0);
 
-  /* "ChronicleLogger.pyx":226
+  /* "ChronicleLogger.pyx":255
  * 
  *     def _get_log_filename(self):
  *         date_str = datetime.now().strftime('%Y%m%d')             # <<<<<<<<<<<<<<
- *         filename = f"{self.__logdir__}/{self.__logname__.decode()}-{date_str}.log"
- *         return ctypes.c_char_p(filename.encode()).value
+ *         # NEW: Replaced f-string with .format(); explicit decode/encode for path handling
+ *         dir_decoded = self.__logdir__.decode('utf-8') if isinstance(self.__logdir__, bytes) else self.__logdir__
 */
   __pyx_t_4 = NULL;
-  __Pyx_GetModuleGlobalName(__pyx_t_5, __pyx_mstate_global->__pyx_n_u_datetime); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 226, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_5, __pyx_mstate_global->__pyx_n_u_datetime); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 255, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_5);
-  __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_t_5, __pyx_mstate_global->__pyx_n_u_now); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 226, __pyx_L1_error)
+  __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_t_5, __pyx_mstate_global->__pyx_n_u_now); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 255, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_6);
   __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
   __pyx_t_7 = 1;
@@ -7515,7 +7721,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_24_get_log_filenam
     __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_6, __pyx_callargs+__pyx_t_7, (1-__pyx_t_7) | (__pyx_t_7*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
     __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
     __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 226, __pyx_L1_error)
+    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 255, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_3);
   }
   __pyx_t_2 = __pyx_t_3;
@@ -7526,102 +7732,141 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_24_get_log_filenam
     __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_strftime, __pyx_callargs+__pyx_t_7, (2-__pyx_t_7) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
     __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
     __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 226, __pyx_L1_error)
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 255, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
   }
   __pyx_v_date_str = __pyx_t_1;
   __pyx_t_1 = 0;
 
-  /* "ChronicleLogger.pyx":227
- *     def _get_log_filename(self):
+  /* "ChronicleLogger.pyx":257
  *         date_str = datetime.now().strftime('%Y%m%d')
- *         filename = f"{self.__logdir__}/{self.__logname__.decode()}-{date_str}.log"             # <<<<<<<<<<<<<<
- *         return ctypes.c_char_p(filename.encode()).value
+ *         # NEW: Replaced f-string with .format(); explicit decode/encode for path handling
+ *         dir_decoded = self.__logdir__.decode('utf-8') if isinstance(self.__logdir__, bytes) else self.__logdir__             # <<<<<<<<<<<<<<
+ *         name_decoded = self.__logname__.decode('utf-8')
+ *         filename = "{0}/{1}-{2}.log".format(dir_decoded, name_decoded, date_str)
+*/
+  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 257, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
+  __pyx_t_8 = PyBytes_Check(__pyx_t_3); 
+  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  if (__pyx_t_8) {
+    __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 257, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_6);
+    __pyx_t_2 = __pyx_t_6;
+    __Pyx_INCREF(__pyx_t_2);
+    __pyx_t_7 = 0;
+    {
+      PyObject *__pyx_callargs[2] = {__pyx_t_2, __pyx_mstate_global->__pyx_kp_u_utf_8};
+      __pyx_t_3 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_decode, __pyx_callargs+__pyx_t_7, (2-__pyx_t_7) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+      __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
+      __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+      if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 257, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_3);
+    }
+    __pyx_t_1 = __pyx_t_3;
+    __pyx_t_3 = 0;
+  } else {
+    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 257, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+    __pyx_t_1 = __pyx_t_3;
+    __pyx_t_3 = 0;
+  }
+  __pyx_v_dir_decoded = __pyx_t_1;
+  __pyx_t_1 = 0;
+
+  /* "ChronicleLogger.pyx":258
+ *         # NEW: Replaced f-string with .format(); explicit decode/encode for path handling
+ *         dir_decoded = self.__logdir__.decode('utf-8') if isinstance(self.__logdir__, bytes) else self.__logdir__
+ *         name_decoded = self.__logname__.decode('utf-8')             # <<<<<<<<<<<<<<
+ *         filename = "{0}/{1}-{2}.log".format(dir_decoded, name_decoded, date_str)
+ *         return ctypes.c_char_p(filename.encode('utf-8')).value
+*/
+  __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logname_2); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 258, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_6);
+  __pyx_t_3 = __pyx_t_6;
+  __Pyx_INCREF(__pyx_t_3);
+  __pyx_t_7 = 0;
+  {
+    PyObject *__pyx_callargs[2] = {__pyx_t_3, __pyx_mstate_global->__pyx_kp_u_utf_8};
+    __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_decode, __pyx_callargs+__pyx_t_7, (2-__pyx_t_7) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+    __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
+    __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 258, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
+  }
+  __pyx_v_name_decoded = __pyx_t_1;
+  __pyx_t_1 = 0;
+
+  /* "ChronicleLogger.pyx":259
+ *         dir_decoded = self.__logdir__.decode('utf-8') if isinstance(self.__logdir__, bytes) else self.__logdir__
+ *         name_decoded = self.__logname__.decode('utf-8')
+ *         filename = "{0}/{1}-{2}.log".format(dir_decoded, name_decoded, date_str)             # <<<<<<<<<<<<<<
+ *         return ctypes.c_char_p(filename.encode('utf-8')).value
  * 
 */
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 227, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_3 = __Pyx_PyObject_FormatSimple(__pyx_t_1, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 227, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logname_2); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 227, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_decode); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 227, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_2);
-  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __pyx_t_1 = __Pyx_PyObject_CallNoArg(__pyx_t_2); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 227, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_1);
-  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __pyx_t_2 = __Pyx_PyObject_FormatSimple(__pyx_t_1, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 227, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_2);
-  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __pyx_t_1 = __Pyx_PyObject_FormatSimple(__pyx_v_date_str, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 227, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_8[0] = __pyx_t_3;
-  __pyx_t_8[1] = __pyx_mstate_global->__pyx_kp_u__7;
-  __pyx_t_8[2] = __pyx_t_2;
-  __pyx_t_8[3] = __pyx_mstate_global->__pyx_kp_u__4;
-  __pyx_t_8[4] = __pyx_t_1;
-  __pyx_t_8[5] = __pyx_mstate_global->__pyx_kp_u_log_2;
-  __pyx_t_6 = __Pyx_PyUnicode_Join(__pyx_t_8, 6, __Pyx_PyUnicode_GET_LENGTH(__pyx_t_3) + 1 * 2 + __Pyx_PyUnicode_GET_LENGTH(__pyx_t_2) + __Pyx_PyUnicode_GET_LENGTH(__pyx_t_1) + 4, 127 | __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_3) | __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_2) | __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_1));
-  if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 227, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_6);
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __pyx_v_filename = ((PyObject*)__pyx_t_6);
-  __pyx_t_6 = 0;
+  __pyx_t_6 = __pyx_mstate_global->__pyx_kp_u_0_1_2_log;
+  __Pyx_INCREF(__pyx_t_6);
+  __pyx_t_7 = 0;
+  {
+    PyObject *__pyx_callargs[4] = {__pyx_t_6, __pyx_v_dir_decoded, __pyx_v_name_decoded, __pyx_v_date_str};
+    __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_format, __pyx_callargs+__pyx_t_7, (4-__pyx_t_7) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+    __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 259, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
+  }
+  __pyx_v_filename = ((PyObject*)__pyx_t_1);
+  __pyx_t_1 = 0;
 
-  /* "ChronicleLogger.pyx":228
- *         date_str = datetime.now().strftime('%Y%m%d')
- *         filename = f"{self.__logdir__}/{self.__logname__.decode()}-{date_str}.log"
- *         return ctypes.c_char_p(filename.encode()).value             # <<<<<<<<<<<<<<
+  /* "ChronicleLogger.pyx":260
+ *         name_decoded = self.__logname__.decode('utf-8')
+ *         filename = "{0}/{1}-{2}.log".format(dir_decoded, name_decoded, date_str)
+ *         return ctypes.c_char_p(filename.encode('utf-8')).value             # <<<<<<<<<<<<<<
  * 
  *     def log_message(self, message, level=b"INFO", component=b""):
 */
   __Pyx_XDECREF(__pyx_r);
-  __pyx_t_1 = NULL;
-  __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_ctypes); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 228, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_2);
-  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_c_char_p); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 228, __pyx_L1_error)
+  __pyx_t_6 = NULL;
+  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_ctypes); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 260, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __pyx_t_2 = PyUnicode_AsEncodedString(__pyx_v_filename, NULL, NULL); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 228, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_c_char_p); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 260, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
+  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  __pyx_t_3 = PyUnicode_AsUTF8String(__pyx_v_filename); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 260, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
   __pyx_t_7 = 1;
   #if CYTHON_UNPACK_METHODS
-  if (unlikely(PyMethod_Check(__pyx_t_3))) {
-    __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_3);
-    assert(__pyx_t_1);
-    PyObject* __pyx__function = PyMethod_GET_FUNCTION(__pyx_t_3);
-    __Pyx_INCREF(__pyx_t_1);
+  if (unlikely(PyMethod_Check(__pyx_t_2))) {
+    __pyx_t_6 = PyMethod_GET_SELF(__pyx_t_2);
+    assert(__pyx_t_6);
+    PyObject* __pyx__function = PyMethod_GET_FUNCTION(__pyx_t_2);
+    __Pyx_INCREF(__pyx_t_6);
     __Pyx_INCREF(__pyx__function);
-    __Pyx_DECREF_SET(__pyx_t_3, __pyx__function);
+    __Pyx_DECREF_SET(__pyx_t_2, __pyx__function);
     __pyx_t_7 = 0;
   }
   #endif
   {
-    PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_t_2};
-    __pyx_t_6 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+__pyx_t_7, (2-__pyx_t_7) | (__pyx_t_7*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
-    __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
-    __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+    PyObject *__pyx_callargs[2] = {__pyx_t_6, __pyx_t_3};
+    __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_2, __pyx_callargs+__pyx_t_7, (2-__pyx_t_7) | (__pyx_t_7*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+    __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
     __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-    if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 228, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_6);
+    __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 260, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
   }
-  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_value); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 228, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-  __pyx_r = __pyx_t_3;
-  __pyx_t_3 = 0;
+  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_value); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 260, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_r = __pyx_t_2;
+  __pyx_t_2 = 0;
   goto __pyx_L0;
 
-  /* "ChronicleLogger.pyx":225
- *                 self.log_message(f"Failed to create directory {dir_path}: {e}", level="ERROR")
+  /* "ChronicleLogger.pyx":254
+ *             self.log_message("Failed to create directory {0}: {1}".format(dir_path, e), level="ERROR")
  * 
  *     def _get_log_filename(self):             # <<<<<<<<<<<<<<
  *         date_str = datetime.now().strftime('%Y%m%d')
- *         filename = f"{self.__logdir__}/{self.__logname__.decode()}-{date_str}.log"
+ *         # NEW: Replaced f-string with .format(); explicit decode/encode for path handling
 */
 
   /* function exit code */
@@ -7636,14 +7881,16 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_24_get_log_filenam
   __pyx_r = NULL;
   __pyx_L0:;
   __Pyx_XDECREF(__pyx_v_date_str);
+  __Pyx_XDECREF(__pyx_v_dir_decoded);
+  __Pyx_XDECREF(__pyx_v_name_decoded);
   __Pyx_XDECREF(__pyx_v_filename);
   __Pyx_XGIVEREF(__pyx_r);
   __Pyx_RefNannyFinishContext();
   return __pyx_r;
 }
 
-/* "ChronicleLogger.pyx":230
- *         return ctypes.c_char_p(filename.encode()).value
+/* "ChronicleLogger.pyx":262
+ *         return ctypes.c_char_p(filename.encode('utf-8')).value
  * 
  *     def log_message(self, message, level=b"INFO", component=b""):             # <<<<<<<<<<<<<<
  *         pid = os.getpid()
@@ -7692,55 +7939,55 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   {
     PyObject ** const __pyx_pyargnames[] = {&__pyx_mstate_global->__pyx_n_u_self,&__pyx_mstate_global->__pyx_n_u_message,&__pyx_mstate_global->__pyx_n_u_level,&__pyx_mstate_global->__pyx_n_u_component,0};
     const Py_ssize_t __pyx_kwds_len = (__pyx_kwds) ? __Pyx_NumKwargs_FASTCALL(__pyx_kwds) : 0;
-    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 230, __pyx_L3_error)
+    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 262, __pyx_L3_error)
     if (__pyx_kwds_len > 0) {
       switch (__pyx_nargs) {
         case  4:
         values[3] = __Pyx_ArgRef_FASTCALL(__pyx_args, 3);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[3])) __PYX_ERR(0, 230, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[3])) __PYX_ERR(0, 262, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  3:
         values[2] = __Pyx_ArgRef_FASTCALL(__pyx_args, 2);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[2])) __PYX_ERR(0, 230, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[2])) __PYX_ERR(0, 262, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  2:
         values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 230, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 262, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 230, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 262, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  0: break;
         default: goto __pyx_L5_argtuple_error;
       }
       const Py_ssize_t kwd_pos_args = __pyx_nargs;
-      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "log_message", 0) < 0) __PYX_ERR(0, 230, __pyx_L3_error)
+      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "log_message", 0) < 0) __PYX_ERR(0, 262, __pyx_L3_error)
       if (!values[2]) values[2] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_n_b_INFO)));
-      if (!values[3]) values[3] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_kp_b__2)));
+      if (!values[3]) values[3] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_kp_b_)));
       for (Py_ssize_t i = __pyx_nargs; i < 2; i++) {
-        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("log_message", 0, 2, 4, i); __PYX_ERR(0, 230, __pyx_L3_error) }
+        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("log_message", 0, 2, 4, i); __PYX_ERR(0, 262, __pyx_L3_error) }
       }
     } else {
       switch (__pyx_nargs) {
         case  4:
         values[3] = __Pyx_ArgRef_FASTCALL(__pyx_args, 3);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[3])) __PYX_ERR(0, 230, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[3])) __PYX_ERR(0, 262, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  3:
         values[2] = __Pyx_ArgRef_FASTCALL(__pyx_args, 2);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[2])) __PYX_ERR(0, 230, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[2])) __PYX_ERR(0, 262, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  2:
         values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 230, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 262, __pyx_L3_error)
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 230, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 262, __pyx_L3_error)
         break;
         default: goto __pyx_L5_argtuple_error;
       }
       if (!values[2]) values[2] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_n_b_INFO)));
-      if (!values[3]) values[3] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_kp_b__2)));
+      if (!values[3]) values[3] = __Pyx_NewRef(((PyObject *)((PyObject*)__pyx_mstate_global->__pyx_kp_b_)));
     }
     __pyx_v_self = values[0];
     __pyx_v_message = values[1];
@@ -7749,7 +7996,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("log_message", 0, 2, 4, __pyx_nargs); __PYX_ERR(0, 230, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("log_message", 0, 2, 4, __pyx_nargs); __PYX_ERR(0, 262, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -7778,6 +8025,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_26log_message(CYTH
   PyObject *__pyx_v_level_str = NULL;
   PyObject *__pyx_v_log_entry = NULL;
   PyObject *__pyx_v_new_path = NULL;
+  PyObject *__pyx_v_new_path_decoded = NULL;
   PyObject *__pyx_v_header = NULL;
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
@@ -7789,15 +8037,13 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_26log_message(CYTH
   PyObject *__pyx_t_6 = NULL;
   PyObject *__pyx_t_7 = NULL;
   int __pyx_t_8;
-  PyObject *__pyx_t_9[11];
-  PyObject *__pyx_t_10[7];
-  int __pyx_t_11;
+  int __pyx_t_9;
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("log_message", 0);
 
-  /* "ChronicleLogger.pyx":231
+  /* "ChronicleLogger.pyx":263
  * 
  *     def log_message(self, message, level=b"INFO", component=b""):
  *         pid = os.getpid()             # <<<<<<<<<<<<<<
@@ -7805,9 +8051,9 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_26log_message(CYTH
  * 
 */
   __pyx_t_2 = NULL;
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 231, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 263, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_getpid); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 231, __pyx_L1_error)
+  __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_getpid); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 263, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_4);
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __pyx_t_5 = 1;
@@ -7827,23 +8073,23 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_26log_message(CYTH
     __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+__pyx_t_5, (1-__pyx_t_5) | (__pyx_t_5*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
     __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
     __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 231, __pyx_L1_error)
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 263, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
   }
   __pyx_v_pid = __pyx_t_1;
   __pyx_t_1 = 0;
 
-  /* "ChronicleLogger.pyx":232
+  /* "ChronicleLogger.pyx":264
  *     def log_message(self, message, level=b"INFO", component=b""):
  *         pid = os.getpid()
  *         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")             # <<<<<<<<<<<<<<
  * 
- *         component_str = f" @{self.byteToStr(component)}" if component else ""
+ *         component_str = " @{0}".format(self.byteToStr(component)) if component else ""  # NEW: Replaced f-string with .format()
 */
   __pyx_t_3 = NULL;
-  __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_datetime); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 232, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_datetime); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 264, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_6);
-  __pyx_t_7 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_now); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 232, __pyx_L1_error)
+  __pyx_t_7 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_now); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 264, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_7);
   __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
   __pyx_t_5 = 1;
@@ -7863,7 +8109,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_26log_message(CYTH
     __pyx_t_2 = __Pyx_PyObject_FastCall(__pyx_t_7, __pyx_callargs+__pyx_t_5, (1-__pyx_t_5) | (__pyx_t_5*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
     __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
     __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
-    if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 232, __pyx_L1_error)
+    if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 264, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
   }
   __pyx_t_4 = __pyx_t_2;
@@ -7874,49 +8120,54 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_26log_message(CYTH
     __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_strftime, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
     __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 232, __pyx_L1_error)
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 264, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
   }
   __pyx_v_timestamp = __pyx_t_1;
   __pyx_t_1 = 0;
 
-  /* "ChronicleLogger.pyx":234
+  /* "ChronicleLogger.pyx":266
  *         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
  * 
- *         component_str = f" @{self.byteToStr(component)}" if component else ""             # <<<<<<<<<<<<<<
+ *         component_str = " @{0}".format(self.byteToStr(component)) if component else ""  # NEW: Replaced f-string with .format()             # <<<<<<<<<<<<<<
  *         message_str = self.byteToStr(message)
  *         level_str = self.byteToStr(level).upper()
 */
-  __pyx_t_8 = __Pyx_PyObject_IsTrue(__pyx_v_component); if (unlikely((__pyx_t_8 < 0))) __PYX_ERR(0, 234, __pyx_L1_error)
+  __pyx_t_8 = __Pyx_PyObject_IsTrue(__pyx_v_component); if (unlikely((__pyx_t_8 < 0))) __PYX_ERR(0, 266, __pyx_L1_error)
   if (__pyx_t_8) {
-    __pyx_t_4 = __pyx_v_self;
+    __pyx_t_4 = __pyx_mstate_global->__pyx_kp_u_0;
     __Pyx_INCREF(__pyx_t_4);
+    __pyx_t_3 = __pyx_v_self;
+    __Pyx_INCREF(__pyx_t_3);
     __pyx_t_5 = 0;
     {
-      PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_v_component};
-      __pyx_t_2 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_byteToStr, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+      PyObject *__pyx_callargs[2] = {__pyx_t_3, __pyx_v_component};
+      __pyx_t_7 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_byteToStr, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+      __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
+      if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 266, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_7);
+    }
+    __pyx_t_5 = 0;
+    {
+      PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_t_7};
+      __pyx_t_2 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_format, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
       __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-      if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 234, __pyx_L1_error)
+      __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+      if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 266, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_2);
     }
-    __pyx_t_4 = __Pyx_PyObject_FormatSimple(__pyx_t_2, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 234, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_4);
-    __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-    __pyx_t_2 = __Pyx_PyUnicode_Concat(__pyx_mstate_global->__pyx_kp_u__8, __pyx_t_4); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 234, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_2);
-    __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
     __pyx_t_1 = __pyx_t_2;
     __pyx_t_2 = 0;
   } else {
-    __Pyx_INCREF(__pyx_mstate_global->__pyx_kp_u__2);
-    __pyx_t_1 = __pyx_mstate_global->__pyx_kp_u__2;
+    __Pyx_INCREF(__pyx_mstate_global->__pyx_kp_u_);
+    __pyx_t_1 = __pyx_mstate_global->__pyx_kp_u_;
   }
   __pyx_v_component_str = ((PyObject*)__pyx_t_1);
   __pyx_t_1 = 0;
 
-  /* "ChronicleLogger.pyx":235
+  /* "ChronicleLogger.pyx":267
  * 
- *         component_str = f" @{self.byteToStr(component)}" if component else ""
+ *         component_str = " @{0}".format(self.byteToStr(component)) if component else ""  # NEW: Replaced f-string with .format()
  *         message_str = self.byteToStr(message)             # <<<<<<<<<<<<<<
  *         level_str = self.byteToStr(level).upper()
  * 
@@ -7928,223 +8179,217 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_26log_message(CYTH
     PyObject *__pyx_callargs[2] = {__pyx_t_2, __pyx_v_message};
     __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_byteToStr, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
     __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 235, __pyx_L1_error)
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 267, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
   }
   __pyx_v_message_str = __pyx_t_1;
   __pyx_t_1 = 0;
 
-  /* "ChronicleLogger.pyx":236
- *         component_str = f" @{self.byteToStr(component)}" if component else ""
+  /* "ChronicleLogger.pyx":268
+ *         component_str = " @{0}".format(self.byteToStr(component)) if component else ""  # NEW: Replaced f-string with .format()
  *         message_str = self.byteToStr(message)
  *         level_str = self.byteToStr(level).upper()             # <<<<<<<<<<<<<<
  * 
- *         log_entry = f"[{timestamp}] pid:{pid} [{level_str}]{component_str} :] {message_str}\n"
+ *         # NEW: Replaced f-string with .format()
 */
-  __pyx_t_7 = __pyx_v_self;
-  __Pyx_INCREF(__pyx_t_7);
+  __pyx_t_4 = __pyx_v_self;
+  __Pyx_INCREF(__pyx_t_4);
   __pyx_t_5 = 0;
   {
-    PyObject *__pyx_callargs[2] = {__pyx_t_7, __pyx_v_level};
-    __pyx_t_4 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_byteToStr, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
-    __Pyx_XDECREF(__pyx_t_7); __pyx_t_7 = 0;
-    if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 236, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_4);
+    PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_v_level};
+    __pyx_t_7 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_byteToStr, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+    __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
+    if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 268, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_7);
   }
-  __pyx_t_2 = __pyx_t_4;
+  __pyx_t_2 = __pyx_t_7;
   __Pyx_INCREF(__pyx_t_2);
   __pyx_t_5 = 0;
   {
     PyObject *__pyx_callargs[2] = {__pyx_t_2, NULL};
     __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_upper, __pyx_callargs+__pyx_t_5, (1-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
     __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
-    __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 236, __pyx_L1_error)
+    __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 268, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
   }
   __pyx_v_level_str = __pyx_t_1;
   __pyx_t_1 = 0;
 
-  /* "ChronicleLogger.pyx":238
- *         level_str = self.byteToStr(level).upper()
+  /* "ChronicleLogger.pyx":271
  * 
- *         log_entry = f"[{timestamp}] pid:{pid} [{level_str}]{component_str} :] {message_str}\n"             # <<<<<<<<<<<<<<
+ *         # NEW: Replaced f-string with .format()
+ *         log_entry = "[{0}] pid:{1} [{2}]{3} :] {4}\n".format(timestamp, pid, level_str, component_str, message_str)             # <<<<<<<<<<<<<<
  * 
  *         new_path = self._get_log_filename()
 */
-  __pyx_t_1 = __Pyx_PyObject_FormatSimple(__pyx_v_timestamp, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 238, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_4 = __Pyx_PyObject_FormatSimple(__pyx_v_pid, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 238, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_4);
-  __pyx_t_2 = __Pyx_PyObject_FormatSimple(__pyx_v_level_str, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 238, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_2);
-  __pyx_t_7 = __Pyx_PyUnicode_Unicode(__pyx_v_component_str); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 238, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_7);
-  __pyx_t_3 = __Pyx_PyObject_FormatSimple(__pyx_v_message_str, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 238, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_9[0] = __pyx_mstate_global->__pyx_kp_u__9;
-  __pyx_t_9[1] = __pyx_t_1;
-  __pyx_t_9[2] = __pyx_mstate_global->__pyx_kp_u_pid;
-  __pyx_t_9[3] = __pyx_t_4;
-  __pyx_t_9[4] = __pyx_mstate_global->__pyx_kp_u__10;
-  __pyx_t_9[5] = __pyx_t_2;
-  __pyx_t_9[6] = __pyx_mstate_global->__pyx_kp_u__11;
-  __pyx_t_9[7] = __pyx_t_7;
-  __pyx_t_9[8] = __pyx_mstate_global->__pyx_kp_u__12;
-  __pyx_t_9[9] = __pyx_t_3;
-  __pyx_t_9[10] = __pyx_mstate_global->__pyx_kp_u__3;
-  __pyx_t_6 = __Pyx_PyUnicode_Join(__pyx_t_9, 11, 1 * 3 + __Pyx_PyUnicode_GET_LENGTH(__pyx_t_1) + 6 + __Pyx_PyUnicode_GET_LENGTH(__pyx_t_4) + 2 + __Pyx_PyUnicode_GET_LENGTH(__pyx_t_2) + __Pyx_PyUnicode_GET_LENGTH(__pyx_t_7) + 4 + __Pyx_PyUnicode_GET_LENGTH(__pyx_t_3), 127 | __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_1) | __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_4) | __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_2) | __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_7) | __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_3));
-  if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 238, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_6);
-  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_v_log_entry = ((PyObject*)__pyx_t_6);
-  __pyx_t_6 = 0;
+  __pyx_t_7 = __pyx_mstate_global->__pyx_kp_u_0_pid_1_2_3_4;
+  __Pyx_INCREF(__pyx_t_7);
+  __pyx_t_5 = 0;
+  {
+    PyObject *__pyx_callargs[6] = {__pyx_t_7, __pyx_v_timestamp, __pyx_v_pid, __pyx_v_level_str, __pyx_v_component_str, __pyx_v_message_str};
+    __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_format, __pyx_callargs+__pyx_t_5, (6-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+    __Pyx_XDECREF(__pyx_t_7); __pyx_t_7 = 0;
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 271, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
+  }
+  __pyx_v_log_entry = ((PyObject*)__pyx_t_1);
+  __pyx_t_1 = 0;
 
-  /* "ChronicleLogger.pyx":240
- *         log_entry = f"[{timestamp}] pid:{pid} [{level_str}]{component_str} :] {message_str}\n"
+  /* "ChronicleLogger.pyx":273
+ *         log_entry = "[{0}] pid:{1} [{2}]{3} :] {4}\n".format(timestamp, pid, level_str, component_str, message_str)
  * 
  *         new_path = self._get_log_filename()             # <<<<<<<<<<<<<<
  * 
  *         if self.__old_logfile_path__ != new_path:
 */
-  __pyx_t_3 = __pyx_v_self;
-  __Pyx_INCREF(__pyx_t_3);
+  __pyx_t_7 = __pyx_v_self;
+  __Pyx_INCREF(__pyx_t_7);
   __pyx_t_5 = 0;
   {
-    PyObject *__pyx_callargs[2] = {__pyx_t_3, NULL};
-    __pyx_t_6 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_get_log_filename, __pyx_callargs+__pyx_t_5, (1-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
-    __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
-    if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 240, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_6);
+    PyObject *__pyx_callargs[2] = {__pyx_t_7, NULL};
+    __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_get_log_filename, __pyx_callargs+__pyx_t_5, (1-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+    __Pyx_XDECREF(__pyx_t_7); __pyx_t_7 = 0;
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 273, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
   }
-  __pyx_v_new_path = __pyx_t_6;
-  __pyx_t_6 = 0;
+  __pyx_v_new_path = __pyx_t_1;
+  __pyx_t_1 = 0;
 
-  /* "ChronicleLogger.pyx":242
+  /* "ChronicleLogger.pyx":275
  *         new_path = self._get_log_filename()
  * 
  *         if self.__old_logfile_path__ != new_path:             # <<<<<<<<<<<<<<
  *             self.log_rotation()
  *             self.__old_logfile_path__ = new_path
 */
-  __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_old_logfile_path); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 242, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_6);
-  __pyx_t_3 = PyObject_RichCompare(__pyx_t_6, __pyx_v_new_path, Py_NE); __Pyx_XGOTREF(__pyx_t_3); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 242, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-  __pyx_t_8 = __Pyx_PyObject_IsTrue(__pyx_t_3); if (unlikely((__pyx_t_8 < 0))) __PYX_ERR(0, 242, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_old_logfile_path); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 275, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  __pyx_t_7 = PyObject_RichCompare(__pyx_t_1, __pyx_v_new_path, Py_NE); __Pyx_XGOTREF(__pyx_t_7); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 275, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_t_8 = __Pyx_PyObject_IsTrue(__pyx_t_7); if (unlikely((__pyx_t_8 < 0))) __PYX_ERR(0, 275, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
   if (__pyx_t_8) {
 
-    /* "ChronicleLogger.pyx":243
+    /* "ChronicleLogger.pyx":276
  * 
  *         if self.__old_logfile_path__ != new_path:
  *             self.log_rotation()             # <<<<<<<<<<<<<<
  *             self.__old_logfile_path__ = new_path
  *             if self.isDebug():
 */
-    __pyx_t_6 = __pyx_v_self;
-    __Pyx_INCREF(__pyx_t_6);
+    __pyx_t_1 = __pyx_v_self;
+    __Pyx_INCREF(__pyx_t_1);
     __pyx_t_5 = 0;
     {
-      PyObject *__pyx_callargs[2] = {__pyx_t_6, NULL};
-      __pyx_t_3 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_log_rotation, __pyx_callargs+__pyx_t_5, (1-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
-      __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
-      if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 243, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_3);
+      PyObject *__pyx_callargs[2] = {__pyx_t_1, NULL};
+      __pyx_t_7 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_log_rotation, __pyx_callargs+__pyx_t_5, (1-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+      __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+      if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 276, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_7);
     }
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+    __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
 
-    /* "ChronicleLogger.pyx":244
+    /* "ChronicleLogger.pyx":277
  *         if self.__old_logfile_path__ != new_path:
  *             self.log_rotation()
  *             self.__old_logfile_path__ = new_path             # <<<<<<<<<<<<<<
  *             if self.isDebug():
- *                 header = f"[{timestamp}] pid:{pid} [INFO] @logger :] Using {new_path.decode()}\n"
+ *                 # NEW: Replaced f-string with .format(); handle new_path decode
 */
-    if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_old_logfile_path, __pyx_v_new_path) < 0) __PYX_ERR(0, 244, __pyx_L1_error)
+    if (__Pyx_PyObject_SetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_old_logfile_path, __pyx_v_new_path) < 0) __PYX_ERR(0, 277, __pyx_L1_error)
 
-    /* "ChronicleLogger.pyx":245
+    /* "ChronicleLogger.pyx":278
  *             self.log_rotation()
  *             self.__old_logfile_path__ = new_path
  *             if self.isDebug():             # <<<<<<<<<<<<<<
- *                 header = f"[{timestamp}] pid:{pid} [INFO] @logger :] Using {new_path.decode()}\n"
- *                 log_entry = header + log_entry
+ *                 # NEW: Replaced f-string with .format(); handle new_path decode
+ *                 new_path_decoded = new_path.decode('utf-8') if isinstance(new_path, bytes) else new_path
 */
-    __pyx_t_6 = __pyx_v_self;
-    __Pyx_INCREF(__pyx_t_6);
+    __pyx_t_1 = __pyx_v_self;
+    __Pyx_INCREF(__pyx_t_1);
     __pyx_t_5 = 0;
     {
-      PyObject *__pyx_callargs[2] = {__pyx_t_6, NULL};
-      __pyx_t_3 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_isDebug, __pyx_callargs+__pyx_t_5, (1-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
-      __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
-      if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 245, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_3);
+      PyObject *__pyx_callargs[2] = {__pyx_t_1, NULL};
+      __pyx_t_7 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_isDebug, __pyx_callargs+__pyx_t_5, (1-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+      __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+      if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 278, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_7);
     }
-    __pyx_t_8 = __Pyx_PyObject_IsTrue(__pyx_t_3); if (unlikely((__pyx_t_8 < 0))) __PYX_ERR(0, 245, __pyx_L1_error)
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+    __pyx_t_8 = __Pyx_PyObject_IsTrue(__pyx_t_7); if (unlikely((__pyx_t_8 < 0))) __PYX_ERR(0, 278, __pyx_L1_error)
+    __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
     if (__pyx_t_8) {
 
-      /* "ChronicleLogger.pyx":246
- *             self.__old_logfile_path__ = new_path
+      /* "ChronicleLogger.pyx":280
  *             if self.isDebug():
- *                 header = f"[{timestamp}] pid:{pid} [INFO] @logger :] Using {new_path.decode()}\n"             # <<<<<<<<<<<<<<
+ *                 # NEW: Replaced f-string with .format(); handle new_path decode
+ *                 new_path_decoded = new_path.decode('utf-8') if isinstance(new_path, bytes) else new_path             # <<<<<<<<<<<<<<
+ *                 header = "[{0}] pid:{1} [INFO] @logger :] Using {2}\n".format(timestamp, pid, new_path_decoded)
+ *                 log_entry = header + log_entry
+*/
+      __pyx_t_8 = PyBytes_Check(__pyx_v_new_path); 
+      if (__pyx_t_8) {
+        __pyx_t_2 = __pyx_v_new_path;
+        __Pyx_INCREF(__pyx_t_2);
+        __pyx_t_5 = 0;
+        {
+          PyObject *__pyx_callargs[2] = {__pyx_t_2, __pyx_mstate_global->__pyx_kp_u_utf_8};
+          __pyx_t_1 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_decode, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+          __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
+          if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 280, __pyx_L1_error)
+          __Pyx_GOTREF(__pyx_t_1);
+        }
+        __pyx_t_7 = __pyx_t_1;
+        __pyx_t_1 = 0;
+      } else {
+        __Pyx_INCREF(__pyx_v_new_path);
+        __pyx_t_7 = __pyx_v_new_path;
+      }
+      __pyx_v_new_path_decoded = __pyx_t_7;
+      __pyx_t_7 = 0;
+
+      /* "ChronicleLogger.pyx":281
+ *                 # NEW: Replaced f-string with .format(); handle new_path decode
+ *                 new_path_decoded = new_path.decode('utf-8') if isinstance(new_path, bytes) else new_path
+ *                 header = "[{0}] pid:{1} [INFO] @logger :] Using {2}\n".format(timestamp, pid, new_path_decoded)             # <<<<<<<<<<<<<<
  *                 log_entry = header + log_entry
  * 
 */
-      __pyx_t_3 = __Pyx_PyObject_FormatSimple(__pyx_v_timestamp, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 246, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_3);
-      __pyx_t_6 = __Pyx_PyObject_FormatSimple(__pyx_v_pid, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 246, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_6);
-      __pyx_t_7 = __Pyx_PyObject_GetAttrStr(__pyx_v_new_path, __pyx_mstate_global->__pyx_n_u_decode); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 246, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_7);
-      __pyx_t_2 = __Pyx_PyObject_CallNoArg(__pyx_t_7); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 246, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_2);
-      __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
-      __pyx_t_7 = __Pyx_PyObject_FormatSimple(__pyx_t_2, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 246, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_7);
-      __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-      __pyx_t_10[0] = __pyx_mstate_global->__pyx_kp_u__9;
-      __pyx_t_10[1] = __pyx_t_3;
-      __pyx_t_10[2] = __pyx_mstate_global->__pyx_kp_u_pid;
-      __pyx_t_10[3] = __pyx_t_6;
-      __pyx_t_10[4] = __pyx_mstate_global->__pyx_kp_u_INFO_logger_Using;
-      __pyx_t_10[5] = __pyx_t_7;
-      __pyx_t_10[6] = __pyx_mstate_global->__pyx_kp_u__3;
-      __pyx_t_2 = __Pyx_PyUnicode_Join(__pyx_t_10, 7, 1 * 2 + __Pyx_PyUnicode_GET_LENGTH(__pyx_t_3) + 6 + __Pyx_PyUnicode_GET_LENGTH(__pyx_t_6) + 25 + __Pyx_PyUnicode_GET_LENGTH(__pyx_t_7), 127 | __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_3) | __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_6) | __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_7));
-      if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 246, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_2);
-      __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-      __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-      __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
-      __pyx_v_header = ((PyObject*)__pyx_t_2);
-      __pyx_t_2 = 0;
+      __pyx_t_1 = __pyx_mstate_global->__pyx_kp_u_0_pid_1_INFO_logger_Using_2;
+      __Pyx_INCREF(__pyx_t_1);
+      __pyx_t_5 = 0;
+      {
+        PyObject *__pyx_callargs[4] = {__pyx_t_1, __pyx_v_timestamp, __pyx_v_pid, __pyx_v_new_path_decoded};
+        __pyx_t_7 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_format, __pyx_callargs+__pyx_t_5, (4-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+        __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+        if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 281, __pyx_L1_error)
+        __Pyx_GOTREF(__pyx_t_7);
+      }
+      __pyx_v_header = ((PyObject*)__pyx_t_7);
+      __pyx_t_7 = 0;
 
-      /* "ChronicleLogger.pyx":247
- *             if self.isDebug():
- *                 header = f"[{timestamp}] pid:{pid} [INFO] @logger :] Using {new_path.decode()}\n"
+      /* "ChronicleLogger.pyx":282
+ *                 new_path_decoded = new_path.decode('utf-8') if isinstance(new_path, bytes) else new_path
+ *                 header = "[{0}] pid:{1} [INFO] @logger :] Using {2}\n".format(timestamp, pid, new_path_decoded)
  *                 log_entry = header + log_entry             # <<<<<<<<<<<<<<
  * 
  *         if self._has_write_permission(new_path):
 */
-      __pyx_t_2 = __Pyx_PyUnicode_Concat(__pyx_v_header, __pyx_v_log_entry); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 247, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_2);
-      __Pyx_DECREF_SET(__pyx_v_log_entry, ((PyObject*)__pyx_t_2));
-      __pyx_t_2 = 0;
+      __pyx_t_7 = __Pyx_PyUnicode_Concat(__pyx_v_header, __pyx_v_log_entry); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 282, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_7);
+      __Pyx_DECREF_SET(__pyx_v_log_entry, ((PyObject*)__pyx_t_7));
+      __pyx_t_7 = 0;
 
-      /* "ChronicleLogger.pyx":245
+      /* "ChronicleLogger.pyx":278
  *             self.log_rotation()
  *             self.__old_logfile_path__ = new_path
  *             if self.isDebug():             # <<<<<<<<<<<<<<
- *                 header = f"[{timestamp}] pid:{pid} [INFO] @logger :] Using {new_path.decode()}\n"
- *                 log_entry = header + log_entry
+ *                 # NEW: Replaced f-string with .format(); handle new_path decode
+ *                 new_path_decoded = new_path.decode('utf-8') if isinstance(new_path, bytes) else new_path
 */
     }
 
-    /* "ChronicleLogger.pyx":242
+    /* "ChronicleLogger.pyx":275
  *         new_path = self._get_log_filename()
  * 
  *         if self.__old_logfile_path__ != new_path:             # <<<<<<<<<<<<<<
@@ -8153,28 +8398,28 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_26log_message(CYTH
 */
   }
 
-  /* "ChronicleLogger.pyx":249
+  /* "ChronicleLogger.pyx":284
  *                 log_entry = header + log_entry
  * 
  *         if self._has_write_permission(new_path):             # <<<<<<<<<<<<<<
  *             if level_str in ("ERROR", "CRITICAL", "FATAL"):
  *                 print(log_entry.strip(), file=sys.stderr)
 */
-  __pyx_t_7 = __pyx_v_self;
-  __Pyx_INCREF(__pyx_t_7);
+  __pyx_t_1 = __pyx_v_self;
+  __Pyx_INCREF(__pyx_t_1);
   __pyx_t_5 = 0;
   {
-    PyObject *__pyx_callargs[2] = {__pyx_t_7, __pyx_v_new_path};
-    __pyx_t_2 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_has_write_permission, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
-    __Pyx_XDECREF(__pyx_t_7); __pyx_t_7 = 0;
-    if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 249, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_2);
+    PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_new_path};
+    __pyx_t_7 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_has_write_permission, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+    __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+    if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 284, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_7);
   }
-  __pyx_t_8 = __Pyx_PyObject_IsTrue(__pyx_t_2); if (unlikely((__pyx_t_8 < 0))) __PYX_ERR(0, 249, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+  __pyx_t_8 = __Pyx_PyObject_IsTrue(__pyx_t_7); if (unlikely((__pyx_t_8 < 0))) __PYX_ERR(0, 284, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
   if (__pyx_t_8) {
 
-    /* "ChronicleLogger.pyx":250
+    /* "ChronicleLogger.pyx":285
  * 
  *         if self._has_write_permission(new_path):
  *             if level_str in ("ERROR", "CRITICAL", "FATAL"):             # <<<<<<<<<<<<<<
@@ -8182,61 +8427,61 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_26log_message(CYTH
  *             else:
 */
     __Pyx_INCREF(__pyx_v_level_str);
-    __pyx_t_2 = __pyx_v_level_str;
-    __pyx_t_11 = (__Pyx_PyUnicode_Equals(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_ERROR, Py_EQ)); if (unlikely((__pyx_t_11 < 0))) __PYX_ERR(0, 250, __pyx_L1_error)
-    if (!__pyx_t_11) {
+    __pyx_t_7 = __pyx_v_level_str;
+    __pyx_t_9 = (__Pyx_PyUnicode_Equals(__pyx_t_7, __pyx_mstate_global->__pyx_n_u_ERROR, Py_EQ)); if (unlikely((__pyx_t_9 < 0))) __PYX_ERR(0, 285, __pyx_L1_error)
+    if (!__pyx_t_9) {
     } else {
-      __pyx_t_8 = __pyx_t_11;
+      __pyx_t_8 = __pyx_t_9;
       goto __pyx_L7_bool_binop_done;
     }
-    __pyx_t_11 = (__Pyx_PyUnicode_Equals(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_CRITICAL, Py_EQ)); if (unlikely((__pyx_t_11 < 0))) __PYX_ERR(0, 250, __pyx_L1_error)
-    if (!__pyx_t_11) {
+    __pyx_t_9 = (__Pyx_PyUnicode_Equals(__pyx_t_7, __pyx_mstate_global->__pyx_n_u_CRITICAL, Py_EQ)); if (unlikely((__pyx_t_9 < 0))) __PYX_ERR(0, 285, __pyx_L1_error)
+    if (!__pyx_t_9) {
     } else {
-      __pyx_t_8 = __pyx_t_11;
+      __pyx_t_8 = __pyx_t_9;
       goto __pyx_L7_bool_binop_done;
     }
-    __pyx_t_11 = (__Pyx_PyUnicode_Equals(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_FATAL, Py_EQ)); if (unlikely((__pyx_t_11 < 0))) __PYX_ERR(0, 250, __pyx_L1_error)
-    __pyx_t_8 = __pyx_t_11;
+    __pyx_t_9 = (__Pyx_PyUnicode_Equals(__pyx_t_7, __pyx_mstate_global->__pyx_n_u_FATAL, Py_EQ)); if (unlikely((__pyx_t_9 < 0))) __PYX_ERR(0, 285, __pyx_L1_error)
+    __pyx_t_8 = __pyx_t_9;
     __pyx_L7_bool_binop_done:;
-    __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-    __pyx_t_11 = __pyx_t_8;
-    if (__pyx_t_11) {
+    __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+    __pyx_t_9 = __pyx_t_8;
+    if (__pyx_t_9) {
 
-      /* "ChronicleLogger.pyx":251
+      /* "ChronicleLogger.pyx":286
  *         if self._has_write_permission(new_path):
  *             if level_str in ("ERROR", "CRITICAL", "FATAL"):
  *                 print(log_entry.strip(), file=sys.stderr)             # <<<<<<<<<<<<<<
  *             else:
  *                 print(log_entry.strip())
 */
-      __pyx_t_7 = NULL;
+      __pyx_t_1 = NULL;
       __Pyx_INCREF(__pyx_builtin_print);
-      __pyx_t_6 = __pyx_builtin_print; 
-      __pyx_t_3 = __Pyx_CallUnboundCMethod0(&__pyx_mstate_global->__pyx_umethod_PyUnicode_Type__strip, __pyx_v_log_entry); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 251, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_3);
-      __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 251, __pyx_L1_error)
+      __pyx_t_2 = __pyx_builtin_print; 
+      __pyx_t_4 = __Pyx_CallUnboundCMethod0(&__pyx_mstate_global->__pyx_umethod_PyUnicode_Type__strip, __pyx_v_log_entry); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 286, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_4);
-      __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_stderr); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 251, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_1);
-      __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+      __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 286, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_3);
+      __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_stderr); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 286, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_6);
+      __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
       __pyx_t_5 = 1;
       {
-        PyObject *__pyx_callargs[2 + ((CYTHON_VECTORCALL) ? 1 : 0)] = {__pyx_t_7, __pyx_t_3};
-        __pyx_t_4 = __Pyx_MakeVectorcallBuilderKwds(1); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 251, __pyx_L1_error)
-        __Pyx_GOTREF(__pyx_t_4);
-        if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_file, __pyx_t_1, __pyx_t_4, __pyx_callargs+2, 0) < 0) __PYX_ERR(0, 251, __pyx_L1_error)
-        __pyx_t_2 = __Pyx_Object_Vectorcall_CallFromBuilder(__pyx_t_6, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (__pyx_t_5*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET), __pyx_t_4);
-        __Pyx_XDECREF(__pyx_t_7); __pyx_t_7 = 0;
-        __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-        __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+        PyObject *__pyx_callargs[2 + ((CYTHON_VECTORCALL) ? 1 : 0)] = {__pyx_t_1, __pyx_t_4};
+        __pyx_t_3 = __Pyx_MakeVectorcallBuilderKwds(1); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 286, __pyx_L1_error)
+        __Pyx_GOTREF(__pyx_t_3);
+        if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_file, __pyx_t_6, __pyx_t_3, __pyx_callargs+2, 0) < 0) __PYX_ERR(0, 286, __pyx_L1_error)
+        __pyx_t_7 = __Pyx_Object_Vectorcall_CallFromBuilder(__pyx_t_2, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (__pyx_t_5*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET), __pyx_t_3);
+        __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
         __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
         __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-        if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 251, __pyx_L1_error)
-        __Pyx_GOTREF(__pyx_t_2);
+        __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+        __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+        if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 286, __pyx_L1_error)
+        __Pyx_GOTREF(__pyx_t_7);
       }
-      __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+      __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
 
-      /* "ChronicleLogger.pyx":250
+      /* "ChronicleLogger.pyx":285
  * 
  *         if self._has_write_permission(new_path):
  *             if level_str in ("ERROR", "CRITICAL", "FATAL"):             # <<<<<<<<<<<<<<
@@ -8246,7 +8491,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_26log_message(CYTH
       goto __pyx_L6;
     }
 
-    /* "ChronicleLogger.pyx":253
+    /* "ChronicleLogger.pyx":288
  *                 print(log_entry.strip(), file=sys.stderr)
  *             else:
  *                 print(log_entry.strip())             # <<<<<<<<<<<<<<
@@ -8254,45 +8499,45 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_26log_message(CYTH
  * 
 */
     /*else*/ {
-      __pyx_t_6 = NULL;
+      __pyx_t_2 = NULL;
       __Pyx_INCREF(__pyx_builtin_print);
-      __pyx_t_4 = __pyx_builtin_print; 
-      __pyx_t_1 = __Pyx_CallUnboundCMethod0(&__pyx_mstate_global->__pyx_umethod_PyUnicode_Type__strip, __pyx_v_log_entry); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 253, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_1);
+      __pyx_t_3 = __pyx_builtin_print; 
+      __pyx_t_6 = __Pyx_CallUnboundCMethod0(&__pyx_mstate_global->__pyx_umethod_PyUnicode_Type__strip, __pyx_v_log_entry); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 288, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_6);
       __pyx_t_5 = 1;
       {
-        PyObject *__pyx_callargs[2] = {__pyx_t_6, __pyx_t_1};
-        __pyx_t_2 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (__pyx_t_5*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
-        __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
-        __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-        __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-        if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 253, __pyx_L1_error)
-        __Pyx_GOTREF(__pyx_t_2);
+        PyObject *__pyx_callargs[2] = {__pyx_t_2, __pyx_t_6};
+        __pyx_t_7 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (__pyx_t_5*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+        __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
+        __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+        __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+        if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 288, __pyx_L1_error)
+        __Pyx_GOTREF(__pyx_t_7);
       }
-      __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+      __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
     }
     __pyx_L6:;
 
-    /* "ChronicleLogger.pyx":254
+    /* "ChronicleLogger.pyx":289
  *             else:
  *                 print(log_entry.strip())
  *             self.write_to_file(log_entry)             # <<<<<<<<<<<<<<
  * 
  *     def _has_write_permission(self, file_path):
 */
-    __pyx_t_4 = __pyx_v_self;
-    __Pyx_INCREF(__pyx_t_4);
+    __pyx_t_3 = __pyx_v_self;
+    __Pyx_INCREF(__pyx_t_3);
     __pyx_t_5 = 0;
     {
-      PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_v_log_entry};
-      __pyx_t_2 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_write_to_file, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
-      __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-      if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 254, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_2);
+      PyObject *__pyx_callargs[2] = {__pyx_t_3, __pyx_v_log_entry};
+      __pyx_t_7 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_write_to_file, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+      __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
+      if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 289, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_7);
     }
-    __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+    __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
 
-    /* "ChronicleLogger.pyx":249
+    /* "ChronicleLogger.pyx":284
  *                 log_entry = header + log_entry
  * 
  *         if self._has_write_permission(new_path):             # <<<<<<<<<<<<<<
@@ -8301,8 +8546,8 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_26log_message(CYTH
 */
   }
 
-  /* "ChronicleLogger.pyx":230
- *         return ctypes.c_char_p(filename.encode()).value
+  /* "ChronicleLogger.pyx":262
+ *         return ctypes.c_char_p(filename.encode('utf-8')).value
  * 
  *     def log_message(self, message, level=b"INFO", component=b""):             # <<<<<<<<<<<<<<
  *         pid = os.getpid()
@@ -8329,18 +8574,19 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_26log_message(CYTH
   __Pyx_XDECREF(__pyx_v_level_str);
   __Pyx_XDECREF(__pyx_v_log_entry);
   __Pyx_XDECREF(__pyx_v_new_path);
+  __Pyx_XDECREF(__pyx_v_new_path_decoded);
   __Pyx_XDECREF(__pyx_v_header);
   __Pyx_XGIVEREF(__pyx_r);
   __Pyx_RefNannyFinishContext();
   return __pyx_r;
 }
 
-/* "ChronicleLogger.pyx":256
+/* "ChronicleLogger.pyx":291
  *             self.write_to_file(log_entry)
  * 
  *     def _has_write_permission(self, file_path):             # <<<<<<<<<<<<<<
+ *         # Example for _has_write_permission
  *         try:
- *             with open(file_path, 'a'):
 */
 
 /* Python wrapper */
@@ -8383,39 +8629,39 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   {
     PyObject ** const __pyx_pyargnames[] = {&__pyx_mstate_global->__pyx_n_u_self,&__pyx_mstate_global->__pyx_n_u_file_path,0};
     const Py_ssize_t __pyx_kwds_len = (__pyx_kwds) ? __Pyx_NumKwargs_FASTCALL(__pyx_kwds) : 0;
-    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 256, __pyx_L3_error)
+    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 291, __pyx_L3_error)
     if (__pyx_kwds_len > 0) {
       switch (__pyx_nargs) {
         case  2:
         values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 256, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 291, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 256, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 291, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  0: break;
         default: goto __pyx_L5_argtuple_error;
       }
       const Py_ssize_t kwd_pos_args = __pyx_nargs;
-      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "_has_write_permission", 0) < 0) __PYX_ERR(0, 256, __pyx_L3_error)
+      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "_has_write_permission", 0) < 0) __PYX_ERR(0, 291, __pyx_L3_error)
       for (Py_ssize_t i = __pyx_nargs; i < 2; i++) {
-        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("_has_write_permission", 1, 2, 2, i); __PYX_ERR(0, 256, __pyx_L3_error) }
+        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("_has_write_permission", 1, 2, 2, i); __PYX_ERR(0, 291, __pyx_L3_error) }
       }
     } else if (unlikely(__pyx_nargs != 2)) {
       goto __pyx_L5_argtuple_error;
     } else {
       values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 256, __pyx_L3_error)
+      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 291, __pyx_L3_error)
       values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 256, __pyx_L3_error)
+      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 291, __pyx_L3_error)
     }
     __pyx_v_self = values[0];
     __pyx_v_file_path = values[1];
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("_has_write_permission", 1, 2, 2, __pyx_nargs); __PYX_ERR(0, 256, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("_has_write_permission", 1, 2, 2, __pyx_nargs); __PYX_ERR(0, 291, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -8437,6 +8683,10 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
 }
 
 static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_28_has_write_permission(CYTHON_UNUSED PyObject *__pyx_self, CYTHON_UNUSED PyObject *__pyx_v_self, PyObject *__pyx_v_file_path) {
+  PyObject *__pyx_v_exc_type = NULL;
+  PyObject *__pyx_v_exc_value = NULL;
+  CYTHON_UNUSED PyObject *__pyx_v_exc_tb = NULL;
+  CYTHON_UNUSED PyObject *__pyx_v_e = NULL;
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
   PyObject *__pyx_t_1 = NULL;
@@ -8451,20 +8701,21 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_28_has_write_permi
   PyObject *__pyx_t_10 = NULL;
   PyObject *__pyx_t_11 = NULL;
   PyObject *__pyx_t_12 = NULL;
-  int __pyx_t_13;
-  PyObject *__pyx_t_14 = NULL;
+  PyObject *__pyx_t_13 = NULL;
+  int __pyx_t_14;
   PyObject *__pyx_t_15 = NULL;
   PyObject *__pyx_t_16 = NULL;
   PyObject *__pyx_t_17 = NULL;
-  PyObject *__pyx_t_18 = NULL;
+  PyObject *(*__pyx_t_18)(PyObject *);
+  PyObject *__pyx_t_19 = NULL;
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("_has_write_permission", 0);
 
-  /* "ChronicleLogger.pyx":257
- * 
+  /* "ChronicleLogger.pyx":293
  *     def _has_write_permission(self, file_path):
+ *         # Example for _has_write_permission
  *         try:             # <<<<<<<<<<<<<<
  *             with open(file_path, 'a'):
  *                 return True
@@ -8478,12 +8729,12 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_28_has_write_permi
     __Pyx_XGOTREF(__pyx_t_3);
     /*try:*/ {
 
-      /* "ChronicleLogger.pyx":258
- *     def _has_write_permission(self, file_path):
+      /* "ChronicleLogger.pyx":294
+ *         # Example for _has_write_permission
  *         try:
  *             with open(file_path, 'a'):             # <<<<<<<<<<<<<<
  *                 return True
- *         except (PermissionError, IOError):
+ *         except:
 */
       /*with:*/ {
         __pyx_t_5 = NULL;
@@ -8495,13 +8746,13 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_28_has_write_permi
           __pyx_t_4 = __Pyx_PyObject_FastCall(__pyx_t_6, __pyx_callargs+__pyx_t_7, (3-__pyx_t_7) | (__pyx_t_7*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
           __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
           __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-          if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 258, __pyx_L3_error)
+          if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 294, __pyx_L3_error)
           __Pyx_GOTREF(__pyx_t_4);
         }
-        __pyx_t_8 = __Pyx_PyObject_LookupSpecial(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_exit); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 258, __pyx_L3_error)
+        __pyx_t_8 = __Pyx_PyObject_LookupSpecial(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_exit); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 294, __pyx_L3_error)
         __Pyx_GOTREF(__pyx_t_8);
         __pyx_t_5 = NULL;
-        __pyx_t_9 = __Pyx_PyObject_LookupSpecial(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_enter); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 258, __pyx_L9_error)
+        __pyx_t_9 = __Pyx_PyObject_LookupSpecial(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_enter); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 294, __pyx_L9_error)
         __Pyx_GOTREF(__pyx_t_9);
         __pyx_t_7 = 1;
         #if CYTHON_UNPACK_METHODS
@@ -8520,7 +8771,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_28_has_write_permi
           __pyx_t_6 = __Pyx_PyObject_FastCall(__pyx_t_9, __pyx_callargs+__pyx_t_7, (1-__pyx_t_7) | (__pyx_t_7*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
           __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
           __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
-          if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 258, __pyx_L9_error)
+          if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 294, __pyx_L9_error)
           __Pyx_GOTREF(__pyx_t_6);
         }
         __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
@@ -8530,24 +8781,24 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_28_has_write_permi
             (void)__pyx_t_10; (void)__pyx_t_11; (void)__pyx_t_12; /* mark used */
             /*try:*/ {
 
-              /* "ChronicleLogger.pyx":259
+              /* "ChronicleLogger.pyx":295
  *         try:
  *             with open(file_path, 'a'):
  *                 return True             # <<<<<<<<<<<<<<
- *         except (PermissionError, IOError):
- *             print(f"Permission denied for writing to {file_path}", file=sys.stderr)
+ *         except:
+ *             # NEW: Version-conditional for multi-exceptions: tuple in Py3, comma-tuple in Py2
 */
               __Pyx_XDECREF(__pyx_r);
               __Pyx_INCREF(Py_True);
               __pyx_r = Py_True;
               goto __pyx_L17_try_return;
 
-              /* "ChronicleLogger.pyx":258
- *     def _has_write_permission(self, file_path):
+              /* "ChronicleLogger.pyx":294
+ *         # Example for _has_write_permission
  *         try:
  *             with open(file_path, 'a'):             # <<<<<<<<<<<<<<
  *                 return True
- *         except (PermissionError, IOError):
+ *         except:
 */
             }
             __pyx_L17_try_return:;
@@ -8559,7 +8810,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_28_has_write_permi
             if (__pyx_t_8) {
               __pyx_t_12 = __Pyx_PyObject_Call(__pyx_t_8, __pyx_mstate_global->__pyx_tuple[2], NULL);
               __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
-              if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 258, __pyx_L3_error)
+              if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 294, __pyx_L3_error)
               __Pyx_GOTREF(__pyx_t_12);
               __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
             }
@@ -8571,7 +8822,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_28_has_write_permi
             if (__pyx_t_8) {
               __pyx_t_11 = __Pyx_PyObject_Call(__pyx_t_8, __pyx_mstate_global->__pyx_tuple[2], NULL);
               __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
-              if (unlikely(!__pyx_t_11)) __PYX_ERR(0, 258, __pyx_L3_error)
+              if (unlikely(!__pyx_t_11)) __PYX_ERR(0, 294, __pyx_L3_error)
               __Pyx_GOTREF(__pyx_t_11);
               __Pyx_DECREF(__pyx_t_11); __pyx_t_11 = 0;
             }
@@ -8588,9 +8839,9 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_28_has_write_permi
         __pyx_L19:;
       }
 
-      /* "ChronicleLogger.pyx":257
- * 
+      /* "ChronicleLogger.pyx":293
  *     def _has_write_permission(self, file_path):
+ *         # Example for _has_write_permission
  *         try:             # <<<<<<<<<<<<<<
  *             with open(file_path, 'a'):
  *                 return True
@@ -8606,78 +8857,432 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_28_has_write_permi
     __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
     __Pyx_XDECREF(__pyx_t_9); __pyx_t_9 = 0;
 
-    /* "ChronicleLogger.pyx":260
+    /* "ChronicleLogger.pyx":296
  *             with open(file_path, 'a'):
  *                 return True
- *         except (PermissionError, IOError):             # <<<<<<<<<<<<<<
- *             print(f"Permission denied for writing to {file_path}", file=sys.stderr)
- *             return False
+ *         except:             # <<<<<<<<<<<<<<
+ *             # NEW: Version-conditional for multi-exceptions: tuple in Py3, comma-tuple in Py2
+ *             if sys.version_info[0] < 3:
 */
-    __pyx_t_13 = __Pyx_PyErr_ExceptionMatches2(__pyx_builtin_PermissionError, __pyx_builtin_IOError);
-    if (__pyx_t_13) {
+    /*except:*/ {
       __Pyx_AddTraceback("ChronicleLogger.ChronicleLogger._has_write_permission", __pyx_clineno, __pyx_lineno, __pyx_filename);
-      if (__Pyx_GetException(&__pyx_t_4, &__pyx_t_6, &__pyx_t_9) < 0) __PYX_ERR(0, 260, __pyx_L5_except_error)
+      if (__Pyx_GetException(&__pyx_t_4, &__pyx_t_6, &__pyx_t_9) < 0) __PYX_ERR(0, 296, __pyx_L5_except_error)
       __Pyx_XGOTREF(__pyx_t_4);
       __Pyx_XGOTREF(__pyx_t_6);
       __Pyx_XGOTREF(__pyx_t_9);
 
-      /* "ChronicleLogger.pyx":261
- *                 return True
- *         except (PermissionError, IOError):
- *             print(f"Permission denied for writing to {file_path}", file=sys.stderr)             # <<<<<<<<<<<<<<
- *             return False
+      /* "ChronicleLogger.pyx":298
+ *         except:
+ *             # NEW: Version-conditional for multi-exceptions: tuple in Py3, comma-tuple in Py2
+ *             if sys.version_info[0] < 3:             # <<<<<<<<<<<<<<
+ *                 exc_type, exc_value, exc_tb = sys.exc_info()
+ *                 if issubclass(exc_type, (OSError, IOError)):  # Check Py2 equivalents
+*/
+      __Pyx_GetModuleGlobalName(__pyx_t_5, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 298, __pyx_L5_except_error)
+      __Pyx_GOTREF(__pyx_t_5);
+      __pyx_t_13 = __Pyx_PyObject_GetAttrStr(__pyx_t_5, __pyx_mstate_global->__pyx_n_u_version_info); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 298, __pyx_L5_except_error)
+      __Pyx_GOTREF(__pyx_t_13);
+      __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
+      __pyx_t_5 = __Pyx_GetItemInt(__pyx_t_13, 0, long, 1, __Pyx_PyLong_From_long, 0, 0, 1, 1); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 298, __pyx_L5_except_error)
+      __Pyx_GOTREF(__pyx_t_5);
+      __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
+      __pyx_t_13 = PyObject_RichCompare(__pyx_t_5, __pyx_mstate_global->__pyx_int_3, Py_LT); __Pyx_XGOTREF(__pyx_t_13); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 298, __pyx_L5_except_error)
+      __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
+      __pyx_t_14 = __Pyx_PyObject_IsTrue(__pyx_t_13); if (unlikely((__pyx_t_14 < 0))) __PYX_ERR(0, 298, __pyx_L5_except_error)
+      __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
+      if (__pyx_t_14) {
+
+        /* "ChronicleLogger.pyx":299
+ *             # NEW: Version-conditional for multi-exceptions: tuple in Py3, comma-tuple in Py2
+ *             if sys.version_info[0] < 3:
+ *                 exc_type, exc_value, exc_tb = sys.exc_info()             # <<<<<<<<<<<<<<
+ *                 if issubclass(exc_type, (OSError, IOError)):  # Check Py2 equivalents
+ *                     e = exc_value
+*/
+        __pyx_t_5 = NULL;
+        __Pyx_GetModuleGlobalName(__pyx_t_15, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_15)) __PYX_ERR(0, 299, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_15);
+        __pyx_t_16 = __Pyx_PyObject_GetAttrStr(__pyx_t_15, __pyx_mstate_global->__pyx_n_u_exc_info); if (unlikely(!__pyx_t_16)) __PYX_ERR(0, 299, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_16);
+        __Pyx_DECREF(__pyx_t_15); __pyx_t_15 = 0;
+        __pyx_t_7 = 1;
+        #if CYTHON_UNPACK_METHODS
+        if (unlikely(PyMethod_Check(__pyx_t_16))) {
+          __pyx_t_5 = PyMethod_GET_SELF(__pyx_t_16);
+          assert(__pyx_t_5);
+          PyObject* __pyx__function = PyMethod_GET_FUNCTION(__pyx_t_16);
+          __Pyx_INCREF(__pyx_t_5);
+          __Pyx_INCREF(__pyx__function);
+          __Pyx_DECREF_SET(__pyx_t_16, __pyx__function);
+          __pyx_t_7 = 0;
+        }
+        #endif
+        {
+          PyObject *__pyx_callargs[2] = {__pyx_t_5, NULL};
+          __pyx_t_13 = __Pyx_PyObject_FastCall(__pyx_t_16, __pyx_callargs+__pyx_t_7, (1-__pyx_t_7) | (__pyx_t_7*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+          __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
+          __Pyx_DECREF(__pyx_t_16); __pyx_t_16 = 0;
+          if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 299, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_13);
+        }
+        if ((likely(PyTuple_CheckExact(__pyx_t_13))) || (PyList_CheckExact(__pyx_t_13))) {
+          PyObject* sequence = __pyx_t_13;
+          Py_ssize_t size = __Pyx_PySequence_SIZE(sequence);
+          if (unlikely(size != 3)) {
+            if (size > 3) __Pyx_RaiseTooManyValuesError(3);
+            else if (size >= 0) __Pyx_RaiseNeedMoreValuesError(size);
+            __PYX_ERR(0, 299, __pyx_L5_except_error)
+          }
+          #if CYTHON_ASSUME_SAFE_MACROS && !CYTHON_AVOID_BORROWED_REFS
+          if (likely(PyTuple_CheckExact(sequence))) {
+            __pyx_t_16 = PyTuple_GET_ITEM(sequence, 0);
+            __Pyx_INCREF(__pyx_t_16);
+            __pyx_t_5 = PyTuple_GET_ITEM(sequence, 1);
+            __Pyx_INCREF(__pyx_t_5);
+            __pyx_t_15 = PyTuple_GET_ITEM(sequence, 2);
+            __Pyx_INCREF(__pyx_t_15);
+          } else {
+            __pyx_t_16 = __Pyx_PyList_GetItemRef(sequence, 0);
+            if (unlikely(!__pyx_t_16)) __PYX_ERR(0, 299, __pyx_L5_except_error)
+            __Pyx_XGOTREF(__pyx_t_16);
+            __pyx_t_5 = __Pyx_PyList_GetItemRef(sequence, 1);
+            if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 299, __pyx_L5_except_error)
+            __Pyx_XGOTREF(__pyx_t_5);
+            __pyx_t_15 = __Pyx_PyList_GetItemRef(sequence, 2);
+            if (unlikely(!__pyx_t_15)) __PYX_ERR(0, 299, __pyx_L5_except_error)
+            __Pyx_XGOTREF(__pyx_t_15);
+          }
+          #else
+          __pyx_t_16 = __Pyx_PySequence_ITEM(sequence, 0); if (unlikely(!__pyx_t_16)) __PYX_ERR(0, 299, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_16);
+          __pyx_t_5 = __Pyx_PySequence_ITEM(sequence, 1); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 299, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_5);
+          __pyx_t_15 = __Pyx_PySequence_ITEM(sequence, 2); if (unlikely(!__pyx_t_15)) __PYX_ERR(0, 299, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_15);
+          #endif
+          __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
+        } else {
+          Py_ssize_t index = -1;
+          __pyx_t_17 = PyObject_GetIter(__pyx_t_13); if (unlikely(!__pyx_t_17)) __PYX_ERR(0, 299, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_17);
+          __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
+          __pyx_t_18 = (CYTHON_COMPILING_IN_LIMITED_API) ? PyIter_Next : __Pyx_PyObject_GetIterNextFunc(__pyx_t_17);
+          index = 0; __pyx_t_16 = __pyx_t_18(__pyx_t_17); if (unlikely(!__pyx_t_16)) goto __pyx_L23_unpacking_failed;
+          __Pyx_GOTREF(__pyx_t_16);
+          index = 1; __pyx_t_5 = __pyx_t_18(__pyx_t_17); if (unlikely(!__pyx_t_5)) goto __pyx_L23_unpacking_failed;
+          __Pyx_GOTREF(__pyx_t_5);
+          index = 2; __pyx_t_15 = __pyx_t_18(__pyx_t_17); if (unlikely(!__pyx_t_15)) goto __pyx_L23_unpacking_failed;
+          __Pyx_GOTREF(__pyx_t_15);
+          if (__Pyx_IternextUnpackEndCheck(__pyx_t_18(__pyx_t_17), 3) < 0) __PYX_ERR(0, 299, __pyx_L5_except_error)
+          __pyx_t_18 = NULL;
+          __Pyx_DECREF(__pyx_t_17); __pyx_t_17 = 0;
+          goto __pyx_L24_unpacking_done;
+          __pyx_L23_unpacking_failed:;
+          __Pyx_DECREF(__pyx_t_17); __pyx_t_17 = 0;
+          __pyx_t_18 = NULL;
+          if (__Pyx_IterFinish() == 0) __Pyx_RaiseNeedMoreValuesError(index);
+          __PYX_ERR(0, 299, __pyx_L5_except_error)
+          __pyx_L24_unpacking_done:;
+        }
+        __pyx_v_exc_type = __pyx_t_16;
+        __pyx_t_16 = 0;
+        __pyx_v_exc_value = __pyx_t_5;
+        __pyx_t_5 = 0;
+        __pyx_v_exc_tb = __pyx_t_15;
+        __pyx_t_15 = 0;
+
+        /* "ChronicleLogger.pyx":300
+ *             if sys.version_info[0] < 3:
+ *                 exc_type, exc_value, exc_tb = sys.exc_info()
+ *                 if issubclass(exc_type, (OSError, IOError)):  # Check Py2 equivalents             # <<<<<<<<<<<<<<
+ *                     e = exc_value
+ *                     print("Permission denied for writing to {0}".format(file_path), file=sys.stderr)
+*/
+        __pyx_t_14 = PyObject_IsSubclass(__pyx_v_exc_type, __pyx_mstate_global->__pyx_tuple[3]); if (unlikely(__pyx_t_14 == ((int)-1))) __PYX_ERR(0, 300, __pyx_L5_except_error)
+        if (__pyx_t_14) {
+
+          /* "ChronicleLogger.pyx":301
+ *                 exc_type, exc_value, exc_tb = sys.exc_info()
+ *                 if issubclass(exc_type, (OSError, IOError)):  # Check Py2 equivalents
+ *                     e = exc_value             # <<<<<<<<<<<<<<
+ *                     print("Permission denied for writing to {0}".format(file_path), file=sys.stderr)
+ *                     return False
+*/
+          __Pyx_INCREF(__pyx_v_exc_value);
+          __pyx_v_e = __pyx_v_exc_value;
+
+          /* "ChronicleLogger.pyx":302
+ *                 if issubclass(exc_type, (OSError, IOError)):  # Check Py2 equivalents
+ *                     e = exc_value
+ *                     print("Permission denied for writing to {0}".format(file_path), file=sys.stderr)             # <<<<<<<<<<<<<<
+ *                     return False
+ *             else:
+*/
+          __pyx_t_15 = NULL;
+          __Pyx_INCREF(__pyx_builtin_print);
+          __pyx_t_5 = __pyx_builtin_print; 
+          __pyx_t_17 = __pyx_mstate_global->__pyx_kp_u_Permission_denied_for_writing_to;
+          __Pyx_INCREF(__pyx_t_17);
+          __pyx_t_7 = 0;
+          {
+            PyObject *__pyx_callargs[2] = {__pyx_t_17, __pyx_v_file_path};
+            __pyx_t_16 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_format, __pyx_callargs+__pyx_t_7, (2-__pyx_t_7) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+            __Pyx_XDECREF(__pyx_t_17); __pyx_t_17 = 0;
+            if (unlikely(!__pyx_t_16)) __PYX_ERR(0, 302, __pyx_L5_except_error)
+            __Pyx_GOTREF(__pyx_t_16);
+          }
+          __Pyx_GetModuleGlobalName(__pyx_t_17, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_17)) __PYX_ERR(0, 302, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_17);
+          __pyx_t_19 = __Pyx_PyObject_GetAttrStr(__pyx_t_17, __pyx_mstate_global->__pyx_n_u_stderr); if (unlikely(!__pyx_t_19)) __PYX_ERR(0, 302, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_19);
+          __Pyx_DECREF(__pyx_t_17); __pyx_t_17 = 0;
+          __pyx_t_7 = 1;
+          {
+            PyObject *__pyx_callargs[2 + ((CYTHON_VECTORCALL) ? 1 : 0)] = {__pyx_t_15, __pyx_t_16};
+            __pyx_t_17 = __Pyx_MakeVectorcallBuilderKwds(1); if (unlikely(!__pyx_t_17)) __PYX_ERR(0, 302, __pyx_L5_except_error)
+            __Pyx_GOTREF(__pyx_t_17);
+            if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_file, __pyx_t_19, __pyx_t_17, __pyx_callargs+2, 0) < 0) __PYX_ERR(0, 302, __pyx_L5_except_error)
+            __pyx_t_13 = __Pyx_Object_Vectorcall_CallFromBuilder(__pyx_t_5, __pyx_callargs+__pyx_t_7, (2-__pyx_t_7) | (__pyx_t_7*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET), __pyx_t_17);
+            __Pyx_XDECREF(__pyx_t_15); __pyx_t_15 = 0;
+            __Pyx_DECREF(__pyx_t_16); __pyx_t_16 = 0;
+            __Pyx_DECREF(__pyx_t_19); __pyx_t_19 = 0;
+            __Pyx_DECREF(__pyx_t_17); __pyx_t_17 = 0;
+            __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
+            if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 302, __pyx_L5_except_error)
+            __Pyx_GOTREF(__pyx_t_13);
+          }
+          __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
+
+          /* "ChronicleLogger.pyx":303
+ *                     e = exc_value
+ *                     print("Permission denied for writing to {0}".format(file_path), file=sys.stderr)
+ *                     return False             # <<<<<<<<<<<<<<
+ *             else:
+ *                 exc_type, exc_value, exc_tb = sys.exc_info()
+*/
+          __Pyx_XDECREF(__pyx_r);
+          __Pyx_INCREF(Py_False);
+          __pyx_r = Py_False;
+          __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+          __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+          __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
+          goto __pyx_L6_except_return;
+
+          /* "ChronicleLogger.pyx":300
+ *             if sys.version_info[0] < 3:
+ *                 exc_type, exc_value, exc_tb = sys.exc_info()
+ *                 if issubclass(exc_type, (OSError, IOError)):  # Check Py2 equivalents             # <<<<<<<<<<<<<<
+ *                     e = exc_value
+ *                     print("Permission denied for writing to {0}".format(file_path), file=sys.stderr)
+*/
+        }
+
+        /* "ChronicleLogger.pyx":298
+ *         except:
+ *             # NEW: Version-conditional for multi-exceptions: tuple in Py3, comma-tuple in Py2
+ *             if sys.version_info[0] < 3:             # <<<<<<<<<<<<<<
+ *                 exc_type, exc_value, exc_tb = sys.exc_info()
+ *                 if issubclass(exc_type, (OSError, IOError)):  # Check Py2 equivalents
+*/
+        goto __pyx_L22;
+      }
+
+      /* "ChronicleLogger.pyx":305
+ *                     return False
+ *             else:
+ *                 exc_type, exc_value, exc_tb = sys.exc_info()             # <<<<<<<<<<<<<<
+ *                 if issubclass(exc_type, (OSError, IOError)):
+ *                     e = exc_value
+*/
+      /*else*/ {
+        __pyx_t_5 = NULL;
+        __Pyx_GetModuleGlobalName(__pyx_t_17, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_17)) __PYX_ERR(0, 305, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_17);
+        __pyx_t_19 = __Pyx_PyObject_GetAttrStr(__pyx_t_17, __pyx_mstate_global->__pyx_n_u_exc_info); if (unlikely(!__pyx_t_19)) __PYX_ERR(0, 305, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_19);
+        __Pyx_DECREF(__pyx_t_17); __pyx_t_17 = 0;
+        __pyx_t_7 = 1;
+        #if CYTHON_UNPACK_METHODS
+        if (unlikely(PyMethod_Check(__pyx_t_19))) {
+          __pyx_t_5 = PyMethod_GET_SELF(__pyx_t_19);
+          assert(__pyx_t_5);
+          PyObject* __pyx__function = PyMethod_GET_FUNCTION(__pyx_t_19);
+          __Pyx_INCREF(__pyx_t_5);
+          __Pyx_INCREF(__pyx__function);
+          __Pyx_DECREF_SET(__pyx_t_19, __pyx__function);
+          __pyx_t_7 = 0;
+        }
+        #endif
+        {
+          PyObject *__pyx_callargs[2] = {__pyx_t_5, NULL};
+          __pyx_t_13 = __Pyx_PyObject_FastCall(__pyx_t_19, __pyx_callargs+__pyx_t_7, (1-__pyx_t_7) | (__pyx_t_7*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+          __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
+          __Pyx_DECREF(__pyx_t_19); __pyx_t_19 = 0;
+          if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 305, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_13);
+        }
+        if ((likely(PyTuple_CheckExact(__pyx_t_13))) || (PyList_CheckExact(__pyx_t_13))) {
+          PyObject* sequence = __pyx_t_13;
+          Py_ssize_t size = __Pyx_PySequence_SIZE(sequence);
+          if (unlikely(size != 3)) {
+            if (size > 3) __Pyx_RaiseTooManyValuesError(3);
+            else if (size >= 0) __Pyx_RaiseNeedMoreValuesError(size);
+            __PYX_ERR(0, 305, __pyx_L5_except_error)
+          }
+          #if CYTHON_ASSUME_SAFE_MACROS && !CYTHON_AVOID_BORROWED_REFS
+          if (likely(PyTuple_CheckExact(sequence))) {
+            __pyx_t_19 = PyTuple_GET_ITEM(sequence, 0);
+            __Pyx_INCREF(__pyx_t_19);
+            __pyx_t_5 = PyTuple_GET_ITEM(sequence, 1);
+            __Pyx_INCREF(__pyx_t_5);
+            __pyx_t_17 = PyTuple_GET_ITEM(sequence, 2);
+            __Pyx_INCREF(__pyx_t_17);
+          } else {
+            __pyx_t_19 = __Pyx_PyList_GetItemRef(sequence, 0);
+            if (unlikely(!__pyx_t_19)) __PYX_ERR(0, 305, __pyx_L5_except_error)
+            __Pyx_XGOTREF(__pyx_t_19);
+            __pyx_t_5 = __Pyx_PyList_GetItemRef(sequence, 1);
+            if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 305, __pyx_L5_except_error)
+            __Pyx_XGOTREF(__pyx_t_5);
+            __pyx_t_17 = __Pyx_PyList_GetItemRef(sequence, 2);
+            if (unlikely(!__pyx_t_17)) __PYX_ERR(0, 305, __pyx_L5_except_error)
+            __Pyx_XGOTREF(__pyx_t_17);
+          }
+          #else
+          __pyx_t_19 = __Pyx_PySequence_ITEM(sequence, 0); if (unlikely(!__pyx_t_19)) __PYX_ERR(0, 305, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_19);
+          __pyx_t_5 = __Pyx_PySequence_ITEM(sequence, 1); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 305, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_5);
+          __pyx_t_17 = __Pyx_PySequence_ITEM(sequence, 2); if (unlikely(!__pyx_t_17)) __PYX_ERR(0, 305, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_17);
+          #endif
+          __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
+        } else {
+          Py_ssize_t index = -1;
+          __pyx_t_16 = PyObject_GetIter(__pyx_t_13); if (unlikely(!__pyx_t_16)) __PYX_ERR(0, 305, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_16);
+          __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
+          __pyx_t_18 = (CYTHON_COMPILING_IN_LIMITED_API) ? PyIter_Next : __Pyx_PyObject_GetIterNextFunc(__pyx_t_16);
+          index = 0; __pyx_t_19 = __pyx_t_18(__pyx_t_16); if (unlikely(!__pyx_t_19)) goto __pyx_L26_unpacking_failed;
+          __Pyx_GOTREF(__pyx_t_19);
+          index = 1; __pyx_t_5 = __pyx_t_18(__pyx_t_16); if (unlikely(!__pyx_t_5)) goto __pyx_L26_unpacking_failed;
+          __Pyx_GOTREF(__pyx_t_5);
+          index = 2; __pyx_t_17 = __pyx_t_18(__pyx_t_16); if (unlikely(!__pyx_t_17)) goto __pyx_L26_unpacking_failed;
+          __Pyx_GOTREF(__pyx_t_17);
+          if (__Pyx_IternextUnpackEndCheck(__pyx_t_18(__pyx_t_16), 3) < 0) __PYX_ERR(0, 305, __pyx_L5_except_error)
+          __pyx_t_18 = NULL;
+          __Pyx_DECREF(__pyx_t_16); __pyx_t_16 = 0;
+          goto __pyx_L27_unpacking_done;
+          __pyx_L26_unpacking_failed:;
+          __Pyx_DECREF(__pyx_t_16); __pyx_t_16 = 0;
+          __pyx_t_18 = NULL;
+          if (__Pyx_IterFinish() == 0) __Pyx_RaiseNeedMoreValuesError(index);
+          __PYX_ERR(0, 305, __pyx_L5_except_error)
+          __pyx_L27_unpacking_done:;
+        }
+        __pyx_v_exc_type = __pyx_t_19;
+        __pyx_t_19 = 0;
+        __pyx_v_exc_value = __pyx_t_5;
+        __pyx_t_5 = 0;
+        __pyx_v_exc_tb = __pyx_t_17;
+        __pyx_t_17 = 0;
+
+        /* "ChronicleLogger.pyx":306
+ *             else:
+ *                 exc_type, exc_value, exc_tb = sys.exc_info()
+ *                 if issubclass(exc_type, (OSError, IOError)):             # <<<<<<<<<<<<<<
+ *                     e = exc_value
+ *                     print("Permission denied for writing to {0}".format(file_path), file=sys.stderr)
+*/
+        __pyx_t_14 = PyObject_IsSubclass(__pyx_v_exc_type, __pyx_mstate_global->__pyx_tuple[4]); if (unlikely(__pyx_t_14 == ((int)-1))) __PYX_ERR(0, 306, __pyx_L5_except_error)
+        if (__pyx_t_14) {
+
+          /* "ChronicleLogger.pyx":307
+ *                 exc_type, exc_value, exc_tb = sys.exc_info()
+ *                 if issubclass(exc_type, (OSError, IOError)):
+ *                     e = exc_value             # <<<<<<<<<<<<<<
+ *                     print("Permission denied for writing to {0}".format(file_path), file=sys.stderr)
+ *                     return False
+*/
+          __Pyx_INCREF(__pyx_v_exc_value);
+          __pyx_v_e = __pyx_v_exc_value;
+
+          /* "ChronicleLogger.pyx":308
+ *                 if issubclass(exc_type, (OSError, IOError)):
+ *                     e = exc_value
+ *                     print("Permission denied for writing to {0}".format(file_path), file=sys.stderr)             # <<<<<<<<<<<<<<
+ *                     return False
  * 
 */
-      __pyx_t_14 = NULL;
-      __Pyx_INCREF(__pyx_builtin_print);
-      __pyx_t_15 = __pyx_builtin_print; 
-      __pyx_t_16 = __Pyx_PyObject_FormatSimple(__pyx_v_file_path, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_16)) __PYX_ERR(0, 261, __pyx_L5_except_error)
-      __Pyx_GOTREF(__pyx_t_16);
-      __pyx_t_17 = __Pyx_PyUnicode_Concat(__pyx_mstate_global->__pyx_kp_u_Permission_denied_for_writing_to, __pyx_t_16); if (unlikely(!__pyx_t_17)) __PYX_ERR(0, 261, __pyx_L5_except_error)
-      __Pyx_GOTREF(__pyx_t_17);
-      __Pyx_DECREF(__pyx_t_16); __pyx_t_16 = 0;
-      __Pyx_GetModuleGlobalName(__pyx_t_16, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_16)) __PYX_ERR(0, 261, __pyx_L5_except_error)
-      __Pyx_GOTREF(__pyx_t_16);
-      __pyx_t_18 = __Pyx_PyObject_GetAttrStr(__pyx_t_16, __pyx_mstate_global->__pyx_n_u_stderr); if (unlikely(!__pyx_t_18)) __PYX_ERR(0, 261, __pyx_L5_except_error)
-      __Pyx_GOTREF(__pyx_t_18);
-      __Pyx_DECREF(__pyx_t_16); __pyx_t_16 = 0;
-      __pyx_t_7 = 1;
-      {
-        PyObject *__pyx_callargs[2 + ((CYTHON_VECTORCALL) ? 1 : 0)] = {__pyx_t_14, __pyx_t_17};
-        __pyx_t_16 = __Pyx_MakeVectorcallBuilderKwds(1); if (unlikely(!__pyx_t_16)) __PYX_ERR(0, 261, __pyx_L5_except_error)
-        __Pyx_GOTREF(__pyx_t_16);
-        if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_file, __pyx_t_18, __pyx_t_16, __pyx_callargs+2, 0) < 0) __PYX_ERR(0, 261, __pyx_L5_except_error)
-        __pyx_t_5 = __Pyx_Object_Vectorcall_CallFromBuilder(__pyx_t_15, __pyx_callargs+__pyx_t_7, (2-__pyx_t_7) | (__pyx_t_7*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET), __pyx_t_16);
-        __Pyx_XDECREF(__pyx_t_14); __pyx_t_14 = 0;
-        __Pyx_DECREF(__pyx_t_17); __pyx_t_17 = 0;
-        __Pyx_DECREF(__pyx_t_18); __pyx_t_18 = 0;
-        __Pyx_DECREF(__pyx_t_16); __pyx_t_16 = 0;
-        __Pyx_DECREF(__pyx_t_15); __pyx_t_15 = 0;
-        if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 261, __pyx_L5_except_error)
-        __Pyx_GOTREF(__pyx_t_5);
-      }
-      __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
+          __pyx_t_17 = NULL;
+          __Pyx_INCREF(__pyx_builtin_print);
+          __pyx_t_5 = __pyx_builtin_print; 
+          __pyx_t_16 = __pyx_mstate_global->__pyx_kp_u_Permission_denied_for_writing_to;
+          __Pyx_INCREF(__pyx_t_16);
+          __pyx_t_7 = 0;
+          {
+            PyObject *__pyx_callargs[2] = {__pyx_t_16, __pyx_v_file_path};
+            __pyx_t_19 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_format, __pyx_callargs+__pyx_t_7, (2-__pyx_t_7) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+            __Pyx_XDECREF(__pyx_t_16); __pyx_t_16 = 0;
+            if (unlikely(!__pyx_t_19)) __PYX_ERR(0, 308, __pyx_L5_except_error)
+            __Pyx_GOTREF(__pyx_t_19);
+          }
+          __Pyx_GetModuleGlobalName(__pyx_t_16, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_16)) __PYX_ERR(0, 308, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_16);
+          __pyx_t_15 = __Pyx_PyObject_GetAttrStr(__pyx_t_16, __pyx_mstate_global->__pyx_n_u_stderr); if (unlikely(!__pyx_t_15)) __PYX_ERR(0, 308, __pyx_L5_except_error)
+          __Pyx_GOTREF(__pyx_t_15);
+          __Pyx_DECREF(__pyx_t_16); __pyx_t_16 = 0;
+          __pyx_t_7 = 1;
+          {
+            PyObject *__pyx_callargs[2 + ((CYTHON_VECTORCALL) ? 1 : 0)] = {__pyx_t_17, __pyx_t_19};
+            __pyx_t_16 = __Pyx_MakeVectorcallBuilderKwds(1); if (unlikely(!__pyx_t_16)) __PYX_ERR(0, 308, __pyx_L5_except_error)
+            __Pyx_GOTREF(__pyx_t_16);
+            if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_file, __pyx_t_15, __pyx_t_16, __pyx_callargs+2, 0) < 0) __PYX_ERR(0, 308, __pyx_L5_except_error)
+            __pyx_t_13 = __Pyx_Object_Vectorcall_CallFromBuilder(__pyx_t_5, __pyx_callargs+__pyx_t_7, (2-__pyx_t_7) | (__pyx_t_7*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET), __pyx_t_16);
+            __Pyx_XDECREF(__pyx_t_17); __pyx_t_17 = 0;
+            __Pyx_DECREF(__pyx_t_19); __pyx_t_19 = 0;
+            __Pyx_DECREF(__pyx_t_15); __pyx_t_15 = 0;
+            __Pyx_DECREF(__pyx_t_16); __pyx_t_16 = 0;
+            __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
+            if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 308, __pyx_L5_except_error)
+            __Pyx_GOTREF(__pyx_t_13);
+          }
+          __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
 
-      /* "ChronicleLogger.pyx":262
- *         except (PermissionError, IOError):
- *             print(f"Permission denied for writing to {file_path}", file=sys.stderr)
- *             return False             # <<<<<<<<<<<<<<
+          /* "ChronicleLogger.pyx":309
+ *                     e = exc_value
+ *                     print("Permission denied for writing to {0}".format(file_path), file=sys.stderr)
+ *                     return False             # <<<<<<<<<<<<<<
  * 
  *     def write_to_file(self, log_entry):
 */
-      __Pyx_XDECREF(__pyx_r);
-      __Pyx_INCREF(Py_False);
-      __pyx_r = Py_False;
-      __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-      __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-      __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
-      goto __pyx_L6_except_return;
-    }
-    goto __pyx_L5_except_error;
+          __Pyx_XDECREF(__pyx_r);
+          __Pyx_INCREF(Py_False);
+          __pyx_r = Py_False;
+          __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+          __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+          __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
+          goto __pyx_L6_except_return;
 
-    /* "ChronicleLogger.pyx":257
- * 
+          /* "ChronicleLogger.pyx":306
+ *             else:
+ *                 exc_type, exc_value, exc_tb = sys.exc_info()
+ *                 if issubclass(exc_type, (OSError, IOError)):             # <<<<<<<<<<<<<<
+ *                     e = exc_value
+ *                     print("Permission denied for writing to {0}".format(file_path), file=sys.stderr)
+*/
+        }
+      }
+      __pyx_L22:;
+      __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
+      __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
+      __Pyx_XDECREF(__pyx_t_9); __pyx_t_9 = 0;
+      goto __pyx_L4_exception_handled;
+    }
+
+    /* "ChronicleLogger.pyx":293
  *     def _has_write_permission(self, file_path):
+ *         # Example for _has_write_permission
  *         try:             # <<<<<<<<<<<<<<
  *             with open(file_path, 'a'):
  *                 return True
@@ -8700,15 +9305,20 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_28_has_write_permi
     __Pyx_XGIVEREF(__pyx_t_3);
     __Pyx_ExceptionReset(__pyx_t_1, __pyx_t_2, __pyx_t_3);
     goto __pyx_L0;
+    __pyx_L4_exception_handled:;
+    __Pyx_XGIVEREF(__pyx_t_1);
+    __Pyx_XGIVEREF(__pyx_t_2);
+    __Pyx_XGIVEREF(__pyx_t_3);
+    __Pyx_ExceptionReset(__pyx_t_1, __pyx_t_2, __pyx_t_3);
     __pyx_L8_try_end:;
   }
 
-  /* "ChronicleLogger.pyx":256
+  /* "ChronicleLogger.pyx":291
  *             self.write_to_file(log_entry)
  * 
  *     def _has_write_permission(self, file_path):             # <<<<<<<<<<<<<<
+ *         # Example for _has_write_permission
  *         try:
- *             with open(file_path, 'a'):
 */
 
   /* function exit code */
@@ -8719,25 +9329,29 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_28_has_write_permi
   __Pyx_XDECREF(__pyx_t_5);
   __Pyx_XDECREF(__pyx_t_6);
   __Pyx_XDECREF(__pyx_t_9);
-  __Pyx_XDECREF(__pyx_t_14);
+  __Pyx_XDECREF(__pyx_t_13);
   __Pyx_XDECREF(__pyx_t_15);
   __Pyx_XDECREF(__pyx_t_16);
   __Pyx_XDECREF(__pyx_t_17);
-  __Pyx_XDECREF(__pyx_t_18);
+  __Pyx_XDECREF(__pyx_t_19);
   __Pyx_AddTraceback("ChronicleLogger.ChronicleLogger._has_write_permission", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = NULL;
   __pyx_L0:;
+  __Pyx_XDECREF(__pyx_v_exc_type);
+  __Pyx_XDECREF(__pyx_v_exc_value);
+  __Pyx_XDECREF(__pyx_v_exc_tb);
+  __Pyx_XDECREF(__pyx_v_e);
   __Pyx_XGIVEREF(__pyx_r);
   __Pyx_RefNannyFinishContext();
   return __pyx_r;
 }
 
-/* "ChronicleLogger.pyx":264
- *             return False
+/* "ChronicleLogger.pyx":311
+ *                     return False
  * 
  *     def write_to_file(self, log_entry):             # <<<<<<<<<<<<<<
- *         with open(self.__current_logfile_path__, 'a', encoding='utf-8') as f:
- *             f.write(log_entry)
+ *         # NEW: Use io_open for encoding support in Py2/3
+ *         with io_open(self.__current_logfile_path__, 'a', encoding='utf-8') as f:
 */
 
 /* Python wrapper */
@@ -8780,39 +9394,39 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   {
     PyObject ** const __pyx_pyargnames[] = {&__pyx_mstate_global->__pyx_n_u_self,&__pyx_mstate_global->__pyx_n_u_log_entry,0};
     const Py_ssize_t __pyx_kwds_len = (__pyx_kwds) ? __Pyx_NumKwargs_FASTCALL(__pyx_kwds) : 0;
-    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 264, __pyx_L3_error)
+    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 311, __pyx_L3_error)
     if (__pyx_kwds_len > 0) {
       switch (__pyx_nargs) {
         case  2:
         values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 264, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 311, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 264, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 311, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  0: break;
         default: goto __pyx_L5_argtuple_error;
       }
       const Py_ssize_t kwd_pos_args = __pyx_nargs;
-      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "write_to_file", 0) < 0) __PYX_ERR(0, 264, __pyx_L3_error)
+      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "write_to_file", 0) < 0) __PYX_ERR(0, 311, __pyx_L3_error)
       for (Py_ssize_t i = __pyx_nargs; i < 2; i++) {
-        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("write_to_file", 1, 2, 2, i); __PYX_ERR(0, 264, __pyx_L3_error) }
+        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("write_to_file", 1, 2, 2, i); __PYX_ERR(0, 311, __pyx_L3_error) }
       }
     } else if (unlikely(__pyx_nargs != 2)) {
       goto __pyx_L5_argtuple_error;
     } else {
       values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 264, __pyx_L3_error)
+      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 311, __pyx_L3_error)
       values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 264, __pyx_L3_error)
+      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 311, __pyx_L3_error)
     }
     __pyx_v_self = values[0];
     __pyx_v_log_entry = values[1];
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("write_to_file", 1, 2, 2, __pyx_nargs); __PYX_ERR(0, 264, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("write_to_file", 1, 2, 2, __pyx_nargs); __PYX_ERR(0, 311, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -8855,37 +9469,48 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_30write_to_file(CY
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("write_to_file", 0);
 
-  /* "ChronicleLogger.pyx":265
- * 
+  /* "ChronicleLogger.pyx":313
  *     def write_to_file(self, log_entry):
- *         with open(self.__current_logfile_path__, 'a', encoding='utf-8') as f:             # <<<<<<<<<<<<<<
+ *         # NEW: Use io_open for encoding support in Py2/3
+ *         with io_open(self.__current_logfile_path__, 'a', encoding='utf-8') as f:             # <<<<<<<<<<<<<<
  *             f.write(log_entry)
  * 
 */
   /*with:*/ {
     __pyx_t_2 = NULL;
-    __Pyx_INCREF(__pyx_builtin_open);
-    __pyx_t_3 = __pyx_builtin_open; 
-    __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_current_logfile_path); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 265, __pyx_L1_error)
+    __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_io_open); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 313, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+    __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_current_logfile_path); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 313, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_4);
     __pyx_t_5 = 1;
+    #if CYTHON_UNPACK_METHODS
+    if (unlikely(PyMethod_Check(__pyx_t_3))) {
+      __pyx_t_2 = PyMethod_GET_SELF(__pyx_t_3);
+      assert(__pyx_t_2);
+      PyObject* __pyx__function = PyMethod_GET_FUNCTION(__pyx_t_3);
+      __Pyx_INCREF(__pyx_t_2);
+      __Pyx_INCREF(__pyx__function);
+      __Pyx_DECREF_SET(__pyx_t_3, __pyx__function);
+      __pyx_t_5 = 0;
+    }
+    #endif
     {
       PyObject *__pyx_callargs[3 + ((CYTHON_VECTORCALL) ? 1 : 0)] = {__pyx_t_2, __pyx_t_4, __pyx_mstate_global->__pyx_n_u_a};
-      __pyx_t_6 = __Pyx_MakeVectorcallBuilderKwds(1); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 265, __pyx_L1_error)
+      __pyx_t_6 = __Pyx_MakeVectorcallBuilderKwds(1); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 313, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_6);
-      if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_encoding, __pyx_mstate_global->__pyx_kp_u_utf_8, __pyx_t_6, __pyx_callargs+3, 0) < 0) __PYX_ERR(0, 265, __pyx_L1_error)
+      if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_encoding, __pyx_mstate_global->__pyx_kp_u_utf_8, __pyx_t_6, __pyx_callargs+3, 0) < 0) __PYX_ERR(0, 313, __pyx_L1_error)
       __pyx_t_1 = __Pyx_Object_Vectorcall_CallFromBuilder(__pyx_t_3, __pyx_callargs+__pyx_t_5, (3-__pyx_t_5) | (__pyx_t_5*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET), __pyx_t_6);
       __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
       __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
       __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 265, __pyx_L1_error)
+      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 313, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
     }
-    __pyx_t_7 = __Pyx_PyObject_LookupSpecial(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_exit); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 265, __pyx_L1_error)
+    __pyx_t_7 = __Pyx_PyObject_LookupSpecial(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_exit); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 313, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_7);
     __pyx_t_6 = NULL;
-    __pyx_t_4 = __Pyx_PyObject_LookupSpecial(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_enter); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 265, __pyx_L3_error)
+    __pyx_t_4 = __Pyx_PyObject_LookupSpecial(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_enter); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 313, __pyx_L3_error)
     __Pyx_GOTREF(__pyx_t_4);
     __pyx_t_5 = 1;
     #if CYTHON_UNPACK_METHODS
@@ -8904,7 +9529,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_30write_to_file(CY
       __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+__pyx_t_5, (1-__pyx_t_5) | (__pyx_t_5*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
       __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
       __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-      if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 265, __pyx_L3_error)
+      if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 313, __pyx_L3_error)
       __Pyx_GOTREF(__pyx_t_3);
     }
     __pyx_t_4 = __pyx_t_3;
@@ -8922,9 +9547,9 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_30write_to_file(CY
           __pyx_v_f = __pyx_t_4;
           __pyx_t_4 = 0;
 
-          /* "ChronicleLogger.pyx":266
- *     def write_to_file(self, log_entry):
- *         with open(self.__current_logfile_path__, 'a', encoding='utf-8') as f:
+          /* "ChronicleLogger.pyx":314
+ *         # NEW: Use io_open for encoding support in Py2/3
+ *         with io_open(self.__current_logfile_path__, 'a', encoding='utf-8') as f:
  *             f.write(log_entry)             # <<<<<<<<<<<<<<
  * 
  *     def log_rotation(self):
@@ -8936,15 +9561,15 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_30write_to_file(CY
             PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_log_entry};
             __pyx_t_4 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_write, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
             __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
-            if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 266, __pyx_L7_error)
+            if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 314, __pyx_L7_error)
             __Pyx_GOTREF(__pyx_t_4);
           }
           __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
 
-          /* "ChronicleLogger.pyx":265
- * 
+          /* "ChronicleLogger.pyx":313
  *     def write_to_file(self, log_entry):
- *         with open(self.__current_logfile_path__, 'a', encoding='utf-8') as f:             # <<<<<<<<<<<<<<
+ *         # NEW: Use io_open for encoding support in Py2/3
+ *         with io_open(self.__current_logfile_path__, 'a', encoding='utf-8') as f:             # <<<<<<<<<<<<<<
  *             f.write(log_entry)
  * 
 */
@@ -8961,20 +9586,20 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_30write_to_file(CY
         __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
         /*except:*/ {
           __Pyx_AddTraceback("ChronicleLogger.ChronicleLogger.write_to_file", __pyx_clineno, __pyx_lineno, __pyx_filename);
-          if (__Pyx_GetException(&__pyx_t_4, &__pyx_t_1, &__pyx_t_3) < 0) __PYX_ERR(0, 265, __pyx_L9_except_error)
+          if (__Pyx_GetException(&__pyx_t_4, &__pyx_t_1, &__pyx_t_3) < 0) __PYX_ERR(0, 313, __pyx_L9_except_error)
           __Pyx_XGOTREF(__pyx_t_4);
           __Pyx_XGOTREF(__pyx_t_1);
           __Pyx_XGOTREF(__pyx_t_3);
-          __pyx_t_6 = PyTuple_Pack(3, __pyx_t_4, __pyx_t_1, __pyx_t_3); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 265, __pyx_L9_except_error)
+          __pyx_t_6 = PyTuple_Pack(3, __pyx_t_4, __pyx_t_1, __pyx_t_3); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 313, __pyx_L9_except_error)
           __Pyx_GOTREF(__pyx_t_6);
           __pyx_t_11 = __Pyx_PyObject_Call(__pyx_t_7, __pyx_t_6, NULL);
           __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
           __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-          if (unlikely(!__pyx_t_11)) __PYX_ERR(0, 265, __pyx_L9_except_error)
+          if (unlikely(!__pyx_t_11)) __PYX_ERR(0, 313, __pyx_L9_except_error)
           __Pyx_GOTREF(__pyx_t_11);
           __pyx_t_12 = __Pyx_PyObject_IsTrue(__pyx_t_11);
           __Pyx_DECREF(__pyx_t_11); __pyx_t_11 = 0;
-          if (__pyx_t_12 < 0) __PYX_ERR(0, 265, __pyx_L9_except_error)
+          if (__pyx_t_12 < 0) __PYX_ERR(0, 313, __pyx_L9_except_error)
           __pyx_t_13 = (!__pyx_t_12);
           if (unlikely(__pyx_t_13)) {
             __Pyx_GIVEREF(__pyx_t_4);
@@ -8982,7 +9607,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_30write_to_file(CY
             __Pyx_XGIVEREF(__pyx_t_3);
             __Pyx_ErrRestoreWithState(__pyx_t_4, __pyx_t_1, __pyx_t_3);
             __pyx_t_4 = 0;  __pyx_t_1 = 0;  __pyx_t_3 = 0; 
-            __PYX_ERR(0, 265, __pyx_L9_except_error)
+            __PYX_ERR(0, 313, __pyx_L9_except_error)
           }
           __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
           __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
@@ -9008,7 +9633,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_30write_to_file(CY
         if (__pyx_t_7) {
           __pyx_t_10 = __Pyx_PyObject_Call(__pyx_t_7, __pyx_mstate_global->__pyx_tuple[2], NULL);
           __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
-          if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 265, __pyx_L1_error)
+          if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 313, __pyx_L1_error)
           __Pyx_GOTREF(__pyx_t_10);
           __Pyx_DECREF(__pyx_t_10); __pyx_t_10 = 0;
         }
@@ -9023,12 +9648,12 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_30write_to_file(CY
     __pyx_L16:;
   }
 
-  /* "ChronicleLogger.pyx":264
- *             return False
+  /* "ChronicleLogger.pyx":311
+ *                     return False
  * 
  *     def write_to_file(self, log_entry):             # <<<<<<<<<<<<<<
- *         with open(self.__current_logfile_path__, 'a', encoding='utf-8') as f:
- *             f.write(log_entry)
+ *         # NEW: Use io_open for encoding support in Py2/3
+ *         with io_open(self.__current_logfile_path__, 'a', encoding='utf-8') as f:
 */
 
   /* function exit code */
@@ -9049,7 +9674,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_30write_to_file(CY
   return __pyx_r;
 }
 
-/* "ChronicleLogger.pyx":268
+/* "ChronicleLogger.pyx":316
  *             f.write(log_entry)
  * 
  *     def log_rotation(self):             # <<<<<<<<<<<<<<
@@ -9096,32 +9721,32 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   {
     PyObject ** const __pyx_pyargnames[] = {&__pyx_mstate_global->__pyx_n_u_self,0};
     const Py_ssize_t __pyx_kwds_len = (__pyx_kwds) ? __Pyx_NumKwargs_FASTCALL(__pyx_kwds) : 0;
-    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 268, __pyx_L3_error)
+    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 316, __pyx_L3_error)
     if (__pyx_kwds_len > 0) {
       switch (__pyx_nargs) {
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 268, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 316, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  0: break;
         default: goto __pyx_L5_argtuple_error;
       }
       const Py_ssize_t kwd_pos_args = __pyx_nargs;
-      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "log_rotation", 0) < 0) __PYX_ERR(0, 268, __pyx_L3_error)
+      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "log_rotation", 0) < 0) __PYX_ERR(0, 316, __pyx_L3_error)
       for (Py_ssize_t i = __pyx_nargs; i < 1; i++) {
-        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("log_rotation", 1, 1, 1, i); __PYX_ERR(0, 268, __pyx_L3_error) }
+        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("log_rotation", 1, 1, 1, i); __PYX_ERR(0, 316, __pyx_L3_error) }
       }
     } else if (unlikely(__pyx_nargs != 1)) {
       goto __pyx_L5_argtuple_error;
     } else {
       values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 268, __pyx_L3_error)
+      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 316, __pyx_L3_error)
     }
     __pyx_v_self = values[0];
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("log_rotation", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 268, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("log_rotation", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 316, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -9158,21 +9783,21 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_32log_rotation(CYT
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("log_rotation", 0);
 
-  /* "ChronicleLogger.pyx":269
+  /* "ChronicleLogger.pyx":317
  * 
  *     def log_rotation(self):
  *         if not os.path.exists(self.__logdir__) or not os.listdir(self.__logdir__):             # <<<<<<<<<<<<<<
  *             return
  *         self.archive_old_logs()
 */
-  __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 269, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 317, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_4);
-  __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_path); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 269, __pyx_L1_error)
+  __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_path); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 317, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_5);
   __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
   __pyx_t_3 = __pyx_t_5;
   __Pyx_INCREF(__pyx_t_3);
-  __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 269, __pyx_L1_error)
+  __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 317, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_4);
   __pyx_t_6 = 0;
   {
@@ -9181,10 +9806,10 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_32log_rotation(CYT
     __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
     __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
     __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-    if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 269, __pyx_L1_error)
+    if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 317, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
   }
-  __pyx_t_7 = __Pyx_PyObject_IsTrue(__pyx_t_2); if (unlikely((__pyx_t_7 < 0))) __PYX_ERR(0, 269, __pyx_L1_error)
+  __pyx_t_7 = __Pyx_PyObject_IsTrue(__pyx_t_2); if (unlikely((__pyx_t_7 < 0))) __PYX_ERR(0, 317, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __pyx_t_8 = (!__pyx_t_7);
   if (!__pyx_t_8) {
@@ -9193,12 +9818,12 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_32log_rotation(CYT
     goto __pyx_L4_bool_binop_done;
   }
   __pyx_t_5 = NULL;
-  __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 269, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 317, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_4);
-  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_listdir); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 269, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_listdir); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 317, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-  __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 269, __pyx_L1_error)
+  __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 317, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_4);
   __pyx_t_6 = 1;
   #if CYTHON_UNPACK_METHODS
@@ -9218,17 +9843,17 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_32log_rotation(CYT
     __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
     __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
     __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-    if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 269, __pyx_L1_error)
+    if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 317, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
   }
-  __pyx_t_8 = __Pyx_PyObject_IsTrue(__pyx_t_2); if (unlikely((__pyx_t_8 < 0))) __PYX_ERR(0, 269, __pyx_L1_error)
+  __pyx_t_8 = __Pyx_PyObject_IsTrue(__pyx_t_2); if (unlikely((__pyx_t_8 < 0))) __PYX_ERR(0, 317, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __pyx_t_7 = (!__pyx_t_8);
   __pyx_t_1 = __pyx_t_7;
   __pyx_L4_bool_binop_done:;
   if (__pyx_t_1) {
 
-    /* "ChronicleLogger.pyx":270
+    /* "ChronicleLogger.pyx":318
  *     def log_rotation(self):
  *         if not os.path.exists(self.__logdir__) or not os.listdir(self.__logdir__):
  *             return             # <<<<<<<<<<<<<<
@@ -9239,7 +9864,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_32log_rotation(CYT
     __pyx_r = Py_None; __Pyx_INCREF(Py_None);
     goto __pyx_L0;
 
-    /* "ChronicleLogger.pyx":269
+    /* "ChronicleLogger.pyx":317
  * 
  *     def log_rotation(self):
  *         if not os.path.exists(self.__logdir__) or not os.listdir(self.__logdir__):             # <<<<<<<<<<<<<<
@@ -9248,7 +9873,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_32log_rotation(CYT
 */
   }
 
-  /* "ChronicleLogger.pyx":271
+  /* "ChronicleLogger.pyx":319
  *         if not os.path.exists(self.__logdir__) or not os.listdir(self.__logdir__):
  *             return
  *         self.archive_old_logs()             # <<<<<<<<<<<<<<
@@ -9262,12 +9887,12 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_32log_rotation(CYT
     PyObject *__pyx_callargs[2] = {__pyx_t_3, NULL};
     __pyx_t_2 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_archive_old_logs, __pyx_callargs+__pyx_t_6, (1-__pyx_t_6) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
     __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
-    if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 271, __pyx_L1_error)
+    if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 319, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
   }
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "ChronicleLogger.pyx":272
+  /* "ChronicleLogger.pyx":320
  *             return
  *         self.archive_old_logs()
  *         self.remove_old_logs()             # <<<<<<<<<<<<<<
@@ -9281,12 +9906,12 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_32log_rotation(CYT
     PyObject *__pyx_callargs[2] = {__pyx_t_3, NULL};
     __pyx_t_2 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_remove_old_logs, __pyx_callargs+__pyx_t_6, (1-__pyx_t_6) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
     __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
-    if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 272, __pyx_L1_error)
+    if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 320, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
   }
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "ChronicleLogger.pyx":268
+  /* "ChronicleLogger.pyx":316
  *             f.write(log_entry)
  * 
  *     def log_rotation(self):             # <<<<<<<<<<<<<<
@@ -9310,7 +9935,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_32log_rotation(CYT
   return __pyx_r;
 }
 
-/* "ChronicleLogger.pyx":274
+/* "ChronicleLogger.pyx":322
  *         self.remove_old_logs()
  * 
  *     def archive_old_logs(self):             # <<<<<<<<<<<<<<
@@ -9357,32 +9982,32 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   {
     PyObject ** const __pyx_pyargnames[] = {&__pyx_mstate_global->__pyx_n_u_self,0};
     const Py_ssize_t __pyx_kwds_len = (__pyx_kwds) ? __Pyx_NumKwargs_FASTCALL(__pyx_kwds) : 0;
-    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 274, __pyx_L3_error)
+    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 322, __pyx_L3_error)
     if (__pyx_kwds_len > 0) {
       switch (__pyx_nargs) {
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 274, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 322, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  0: break;
         default: goto __pyx_L5_argtuple_error;
       }
       const Py_ssize_t kwd_pos_args = __pyx_nargs;
-      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "archive_old_logs", 0) < 0) __PYX_ERR(0, 274, __pyx_L3_error)
+      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "archive_old_logs", 0) < 0) __PYX_ERR(0, 322, __pyx_L3_error)
       for (Py_ssize_t i = __pyx_nargs; i < 1; i++) {
-        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("archive_old_logs", 1, 1, 1, i); __PYX_ERR(0, 274, __pyx_L3_error) }
+        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("archive_old_logs", 1, 1, 1, i); __PYX_ERR(0, 322, __pyx_L3_error) }
       }
     } else if (unlikely(__pyx_nargs != 1)) {
       goto __pyx_L5_argtuple_error;
     } else {
       values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 274, __pyx_L3_error)
+      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 322, __pyx_L3_error)
     }
     __pyx_v_self = values[0];
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("archive_old_logs", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 274, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("archive_old_logs", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 322, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -9407,6 +10032,9 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
   PyObject *__pyx_v_file = NULL;
   PyObject *__pyx_v_date_part = NULL;
   PyObject *__pyx_v_log_date = NULL;
+  CYTHON_UNUSED PyObject *__pyx_v_exc_type = NULL;
+  PyObject *__pyx_v_exc_value = NULL;
+  CYTHON_UNUSED PyObject *__pyx_v_exc_tb = NULL;
   PyObject *__pyx_v_e = NULL;
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
@@ -9429,18 +10057,14 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
   PyObject *__pyx_t_17 = NULL;
   PyObject *__pyx_t_18 = NULL;
   PyObject *__pyx_t_19 = NULL;
-  PyObject *__pyx_t_20 = NULL;
-  int __pyx_t_21;
-  char const *__pyx_t_22;
-  PyObject *__pyx_t_23 = NULL;
-  PyObject *__pyx_t_24 = NULL;
-  PyObject *__pyx_t_25 = NULL;
+  PyObject *(*__pyx_t_20)(PyObject *);
+  PyObject *__pyx_t_21 = NULL;
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("archive_old_logs", 0);
 
-  /* "ChronicleLogger.pyx":275
+  /* "ChronicleLogger.pyx":323
  * 
  *     def archive_old_logs(self):
  *         try:             # <<<<<<<<<<<<<<
@@ -9456,7 +10080,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
     __Pyx_XGOTREF(__pyx_t_3);
     /*try:*/ {
 
-      /* "ChronicleLogger.pyx":276
+      /* "ChronicleLogger.pyx":324
  *     def archive_old_logs(self):
  *         try:
  *             for file in os.listdir(self.__logdir__):             # <<<<<<<<<<<<<<
@@ -9464,12 +10088,12 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
  *                     date_part = file.split('-')[-1].split('.')[0]
 */
       __pyx_t_5 = NULL;
-      __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 276, __pyx_L3_error)
+      __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 324, __pyx_L3_error)
       __Pyx_GOTREF(__pyx_t_6);
-      __pyx_t_7 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_listdir); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 276, __pyx_L3_error)
+      __pyx_t_7 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_listdir); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 324, __pyx_L3_error)
       __Pyx_GOTREF(__pyx_t_7);
       __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-      __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 276, __pyx_L3_error)
+      __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 324, __pyx_L3_error)
       __Pyx_GOTREF(__pyx_t_6);
       __pyx_t_8 = 1;
       #if CYTHON_UNPACK_METHODS
@@ -9489,7 +10113,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
         __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
         __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
         __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
-        if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 276, __pyx_L3_error)
+        if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 324, __pyx_L3_error)
         __Pyx_GOTREF(__pyx_t_4);
       }
       if (likely(PyList_CheckExact(__pyx_t_4)) || PyTuple_CheckExact(__pyx_t_4)) {
@@ -9497,9 +10121,9 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
         __pyx_t_9 = 0;
         __pyx_t_10 = NULL;
       } else {
-        __pyx_t_9 = -1; __pyx_t_7 = PyObject_GetIter(__pyx_t_4); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 276, __pyx_L3_error)
+        __pyx_t_9 = -1; __pyx_t_7 = PyObject_GetIter(__pyx_t_4); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 324, __pyx_L3_error)
         __Pyx_GOTREF(__pyx_t_7);
-        __pyx_t_10 = (CYTHON_COMPILING_IN_LIMITED_API) ? PyIter_Next : __Pyx_PyObject_GetIterNextFunc(__pyx_t_7); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 276, __pyx_L3_error)
+        __pyx_t_10 = (CYTHON_COMPILING_IN_LIMITED_API) ? PyIter_Next : __Pyx_PyObject_GetIterNextFunc(__pyx_t_7); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 324, __pyx_L3_error)
       }
       __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
       for (;;) {
@@ -9508,7 +10132,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
             {
               Py_ssize_t __pyx_temp = __Pyx_PyList_GET_SIZE(__pyx_t_7);
               #if !CYTHON_ASSUME_SAFE_SIZE
-              if (unlikely((__pyx_temp < 0))) __PYX_ERR(0, 276, __pyx_L3_error)
+              if (unlikely((__pyx_temp < 0))) __PYX_ERR(0, 324, __pyx_L3_error)
               #endif
               if (__pyx_t_9 >= __pyx_temp) break;
             }
@@ -9518,7 +10142,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
             {
               Py_ssize_t __pyx_temp = __Pyx_PyTuple_GET_SIZE(__pyx_t_7);
               #if !CYTHON_ASSUME_SAFE_SIZE
-              if (unlikely((__pyx_temp < 0))) __PYX_ERR(0, 276, __pyx_L3_error)
+              if (unlikely((__pyx_temp < 0))) __PYX_ERR(0, 324, __pyx_L3_error)
               #endif
               if (__pyx_t_9 >= __pyx_temp) break;
             }
@@ -9529,13 +10153,13 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
             #endif
             ++__pyx_t_9;
           }
-          if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 276, __pyx_L3_error)
+          if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 324, __pyx_L3_error)
         } else {
           __pyx_t_4 = __pyx_t_10(__pyx_t_7);
           if (unlikely(!__pyx_t_4)) {
             PyObject* exc_type = PyErr_Occurred();
             if (exc_type) {
-              if (unlikely(!__Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration))) __PYX_ERR(0, 276, __pyx_L3_error)
+              if (unlikely(!__Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration))) __PYX_ERR(0, 324, __pyx_L3_error)
               PyErr_Clear();
             }
             break;
@@ -9545,7 +10169,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
         __Pyx_XDECREF_SET(__pyx_v_file, __pyx_t_4);
         __pyx_t_4 = 0;
 
-        /* "ChronicleLogger.pyx":277
+        /* "ChronicleLogger.pyx":325
  *         try:
  *             for file in os.listdir(self.__logdir__):
  *                 if file.endswith(".log"):             # <<<<<<<<<<<<<<
@@ -9559,14 +10183,14 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
           PyObject *__pyx_callargs[2] = {__pyx_t_6, __pyx_mstate_global->__pyx_kp_u_log_2};
           __pyx_t_4 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_endswith, __pyx_callargs+__pyx_t_8, (2-__pyx_t_8) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
           __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
-          if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 277, __pyx_L3_error)
+          if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 325, __pyx_L3_error)
           __Pyx_GOTREF(__pyx_t_4);
         }
-        __pyx_t_11 = __Pyx_PyObject_IsTrue(__pyx_t_4); if (unlikely((__pyx_t_11 < 0))) __PYX_ERR(0, 277, __pyx_L3_error)
+        __pyx_t_11 = __Pyx_PyObject_IsTrue(__pyx_t_4); if (unlikely((__pyx_t_11 < 0))) __PYX_ERR(0, 325, __pyx_L3_error)
         __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
         if (__pyx_t_11) {
 
-          /* "ChronicleLogger.pyx":278
+          /* "ChronicleLogger.pyx":326
  *             for file in os.listdir(self.__logdir__):
  *                 if file.endswith(".log"):
  *                     date_part = file.split('-')[-1].split('.')[0]             # <<<<<<<<<<<<<<
@@ -9577,33 +10201,33 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
           __Pyx_INCREF(__pyx_t_12);
           __pyx_t_8 = 0;
           {
-            PyObject *__pyx_callargs[2] = {__pyx_t_12, __pyx_mstate_global->__pyx_kp_u__4};
+            PyObject *__pyx_callargs[2] = {__pyx_t_12, __pyx_mstate_global->__pyx_kp_u__3};
             __pyx_t_5 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_split, __pyx_callargs+__pyx_t_8, (2-__pyx_t_8) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
             __Pyx_XDECREF(__pyx_t_12); __pyx_t_12 = 0;
-            if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 278, __pyx_L3_error)
+            if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 326, __pyx_L3_error)
             __Pyx_GOTREF(__pyx_t_5);
           }
-          __pyx_t_12 = __Pyx_GetItemInt(__pyx_t_5, -1L, long, 1, __Pyx_PyLong_From_long, 0, 1, 1, 1); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 278, __pyx_L3_error)
+          __pyx_t_12 = __Pyx_GetItemInt(__pyx_t_5, -1L, long, 1, __Pyx_PyLong_From_long, 0, 1, 1, 1); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 326, __pyx_L3_error)
           __Pyx_GOTREF(__pyx_t_12);
           __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
           __pyx_t_6 = __pyx_t_12;
           __Pyx_INCREF(__pyx_t_6);
           __pyx_t_8 = 0;
           {
-            PyObject *__pyx_callargs[2] = {__pyx_t_6, __pyx_mstate_global->__pyx_kp_u_};
+            PyObject *__pyx_callargs[2] = {__pyx_t_6, __pyx_mstate_global->__pyx_kp_u__5};
             __pyx_t_4 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_split, __pyx_callargs+__pyx_t_8, (2-__pyx_t_8) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
             __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
             __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
-            if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 278, __pyx_L3_error)
+            if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 326, __pyx_L3_error)
             __Pyx_GOTREF(__pyx_t_4);
           }
-          __pyx_t_12 = __Pyx_GetItemInt(__pyx_t_4, 0, long, 1, __Pyx_PyLong_From_long, 0, 0, 1, 1); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 278, __pyx_L3_error)
+          __pyx_t_12 = __Pyx_GetItemInt(__pyx_t_4, 0, long, 1, __Pyx_PyLong_From_long, 0, 0, 1, 1); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 326, __pyx_L3_error)
           __Pyx_GOTREF(__pyx_t_12);
           __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
           __Pyx_XDECREF_SET(__pyx_v_date_part, __pyx_t_12);
           __pyx_t_12 = 0;
 
-          /* "ChronicleLogger.pyx":279
+          /* "ChronicleLogger.pyx":327
  *                 if file.endswith(".log"):
  *                     date_part = file.split('-')[-1].split('.')[0]
  *                     try:             # <<<<<<<<<<<<<<
@@ -9619,7 +10243,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
             __Pyx_XGOTREF(__pyx_t_15);
             /*try:*/ {
 
-              /* "ChronicleLogger.pyx":280
+              /* "ChronicleLogger.pyx":328
  *                     date_part = file.split('-')[-1].split('.')[0]
  *                     try:
  *                         log_date = datetime.strptime(date_part, '%Y%m%d')             # <<<<<<<<<<<<<<
@@ -9627,9 +10251,9 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
  *                             self._archive_log(file)
 */
               __pyx_t_4 = NULL;
-              __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_datetime); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 280, __pyx_L12_error)
+              __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_datetime); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 328, __pyx_L12_error)
               __Pyx_GOTREF(__pyx_t_6);
-              __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_strptime); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 280, __pyx_L12_error)
+              __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_strptime); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 328, __pyx_L12_error)
               __Pyx_GOTREF(__pyx_t_5);
               __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
               __pyx_t_8 = 1;
@@ -9649,13 +10273,13 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
                 __pyx_t_12 = __Pyx_PyObject_FastCall(__pyx_t_5, __pyx_callargs+__pyx_t_8, (3-__pyx_t_8) | (__pyx_t_8*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
                 __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
                 __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-                if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 280, __pyx_L12_error)
+                if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 328, __pyx_L12_error)
                 __Pyx_GOTREF(__pyx_t_12);
               }
               __Pyx_XDECREF_SET(__pyx_v_log_date, __pyx_t_12);
               __pyx_t_12 = 0;
 
-              /* "ChronicleLogger.pyx":281
+              /* "ChronicleLogger.pyx":329
  *                     try:
  *                         log_date = datetime.strptime(date_part, '%Y%m%d')
  *                         if (datetime.now() - log_date).days > self.LOG_ARCHIVE_DAYS:             # <<<<<<<<<<<<<<
@@ -9663,9 +10287,9 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
  *                     except ValueError:
 */
               __pyx_t_5 = NULL;
-              __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_datetime); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 281, __pyx_L12_error)
+              __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_datetime); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 329, __pyx_L12_error)
               __Pyx_GOTREF(__pyx_t_4);
-              __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_now); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 281, __pyx_L12_error)
+              __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_now); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 329, __pyx_L12_error)
               __Pyx_GOTREF(__pyx_t_6);
               __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
               __pyx_t_8 = 1;
@@ -9685,25 +10309,25 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
                 __pyx_t_12 = __Pyx_PyObject_FastCall(__pyx_t_6, __pyx_callargs+__pyx_t_8, (1-__pyx_t_8) | (__pyx_t_8*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
                 __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
                 __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-                if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 281, __pyx_L12_error)
+                if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 329, __pyx_L12_error)
                 __Pyx_GOTREF(__pyx_t_12);
               }
-              __pyx_t_6 = PyNumber_Subtract(__pyx_t_12, __pyx_v_log_date); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 281, __pyx_L12_error)
+              __pyx_t_6 = PyNumber_Subtract(__pyx_t_12, __pyx_v_log_date); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 329, __pyx_L12_error)
               __Pyx_GOTREF(__pyx_t_6);
               __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
-              __pyx_t_12 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_days); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 281, __pyx_L12_error)
+              __pyx_t_12 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_days); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 329, __pyx_L12_error)
               __Pyx_GOTREF(__pyx_t_12);
               __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-              __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_LOG_ARCHIVE_DAYS); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 281, __pyx_L12_error)
+              __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_LOG_ARCHIVE_DAYS); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 329, __pyx_L12_error)
               __Pyx_GOTREF(__pyx_t_6);
-              __pyx_t_5 = PyObject_RichCompare(__pyx_t_12, __pyx_t_6, Py_GT); __Pyx_XGOTREF(__pyx_t_5); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 281, __pyx_L12_error)
+              __pyx_t_5 = PyObject_RichCompare(__pyx_t_12, __pyx_t_6, Py_GT); __Pyx_XGOTREF(__pyx_t_5); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 329, __pyx_L12_error)
               __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
               __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-              __pyx_t_11 = __Pyx_PyObject_IsTrue(__pyx_t_5); if (unlikely((__pyx_t_11 < 0))) __PYX_ERR(0, 281, __pyx_L12_error)
+              __pyx_t_11 = __Pyx_PyObject_IsTrue(__pyx_t_5); if (unlikely((__pyx_t_11 < 0))) __PYX_ERR(0, 329, __pyx_L12_error)
               __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
               if (__pyx_t_11) {
 
-                /* "ChronicleLogger.pyx":282
+                /* "ChronicleLogger.pyx":330
  *                         log_date = datetime.strptime(date_part, '%Y%m%d')
  *                         if (datetime.now() - log_date).days > self.LOG_ARCHIVE_DAYS:
  *                             self._archive_log(file)             # <<<<<<<<<<<<<<
@@ -9717,12 +10341,12 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
                   PyObject *__pyx_callargs[2] = {__pyx_t_6, __pyx_v_file};
                   __pyx_t_5 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_archive_log, __pyx_callargs+__pyx_t_8, (2-__pyx_t_8) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
                   __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
-                  if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 282, __pyx_L12_error)
+                  if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 330, __pyx_L12_error)
                   __Pyx_GOTREF(__pyx_t_5);
                 }
                 __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
-                /* "ChronicleLogger.pyx":281
+                /* "ChronicleLogger.pyx":329
  *                     try:
  *                         log_date = datetime.strptime(date_part, '%Y%m%d')
  *                         if (datetime.now() - log_date).days > self.LOG_ARCHIVE_DAYS:             # <<<<<<<<<<<<<<
@@ -9731,7 +10355,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
 */
               }
 
-              /* "ChronicleLogger.pyx":279
+              /* "ChronicleLogger.pyx":327
  *                 if file.endswith(".log"):
  *                     date_part = file.split('-')[-1].split('.')[0]
  *                     try:             # <<<<<<<<<<<<<<
@@ -9749,27 +10373,27 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
             __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
             __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
 
-            /* "ChronicleLogger.pyx":283
+            /* "ChronicleLogger.pyx":331
  *                         if (datetime.now() - log_date).days > self.LOG_ARCHIVE_DAYS:
  *                             self._archive_log(file)
  *                     except ValueError:             # <<<<<<<<<<<<<<
  *                         continue
- *         except Exception as e:
+ *         except Exception:
 */
             __pyx_t_16 = __Pyx_PyErr_ExceptionMatches(__pyx_builtin_ValueError);
             if (__pyx_t_16) {
               __Pyx_AddTraceback("ChronicleLogger.ChronicleLogger.archive_old_logs", __pyx_clineno, __pyx_lineno, __pyx_filename);
-              if (__Pyx_GetException(&__pyx_t_5, &__pyx_t_6, &__pyx_t_12) < 0) __PYX_ERR(0, 283, __pyx_L14_except_error)
+              if (__Pyx_GetException(&__pyx_t_5, &__pyx_t_6, &__pyx_t_12) < 0) __PYX_ERR(0, 331, __pyx_L14_except_error)
               __Pyx_XGOTREF(__pyx_t_5);
               __Pyx_XGOTREF(__pyx_t_6);
               __Pyx_XGOTREF(__pyx_t_12);
 
-              /* "ChronicleLogger.pyx":284
+              /* "ChronicleLogger.pyx":332
  *                             self._archive_log(file)
  *                     except ValueError:
  *                         continue             # <<<<<<<<<<<<<<
- *         except Exception as e:
- *             print(f"Error during archive: {e}", file=sys.stderr)
+ *         except Exception:
+ *             # NEW: Cross-version exception handling with sys.exc_info() for Py2/3 compat (avoids comma/as syntax errors; binds e safely)
 */
               goto __pyx_L21_except_continue;
               __pyx_L21_except_continue:;
@@ -9780,7 +10404,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
             }
             goto __pyx_L14_except_error;
 
-            /* "ChronicleLogger.pyx":279
+            /* "ChronicleLogger.pyx":327
  *                 if file.endswith(".log"):
  *                     date_part = file.split('-')[-1].split('.')[0]
  *                     try:             # <<<<<<<<<<<<<<
@@ -9802,7 +10426,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
             __pyx_L19_try_end:;
           }
 
-          /* "ChronicleLogger.pyx":277
+          /* "ChronicleLogger.pyx":325
  *         try:
  *             for file in os.listdir(self.__logdir__):
  *                 if file.endswith(".log"):             # <<<<<<<<<<<<<<
@@ -9811,7 +10435,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
 */
         }
 
-        /* "ChronicleLogger.pyx":276
+        /* "ChronicleLogger.pyx":324
  *     def archive_old_logs(self):
  *         try:
  *             for file in os.listdir(self.__logdir__):             # <<<<<<<<<<<<<<
@@ -9822,7 +10446,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
       }
       __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
 
-      /* "ChronicleLogger.pyx":275
+      /* "ChronicleLogger.pyx":323
  * 
  *     def archive_old_logs(self):
  *         try:             # <<<<<<<<<<<<<<
@@ -9841,111 +10465,171 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
     __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
     __Pyx_XDECREF(__pyx_t_7); __pyx_t_7 = 0;
 
-    /* "ChronicleLogger.pyx":285
+    /* "ChronicleLogger.pyx":333
  *                     except ValueError:
  *                         continue
- *         except Exception as e:             # <<<<<<<<<<<<<<
- *             print(f"Error during archive: {e}", file=sys.stderr)
- * 
+ *         except Exception:             # <<<<<<<<<<<<<<
+ *             # NEW: Cross-version exception handling with sys.exc_info() for Py2/3 compat (avoids comma/as syntax errors; binds e safely)
+ *             exc_type, exc_value, exc_tb = sys.exc_info()
 */
     __pyx_t_16 = __Pyx_PyErr_ExceptionMatches(((PyObject *)(((PyTypeObject*)PyExc_Exception))));
     if (__pyx_t_16) {
       __Pyx_AddTraceback("ChronicleLogger.ChronicleLogger.archive_old_logs", __pyx_clineno, __pyx_lineno, __pyx_filename);
-      if (__Pyx_GetException(&__pyx_t_7, &__pyx_t_12, &__pyx_t_6) < 0) __PYX_ERR(0, 285, __pyx_L5_except_error)
+      if (__Pyx_GetException(&__pyx_t_7, &__pyx_t_12, &__pyx_t_6) < 0) __PYX_ERR(0, 333, __pyx_L5_except_error)
       __Pyx_XGOTREF(__pyx_t_7);
       __Pyx_XGOTREF(__pyx_t_12);
       __Pyx_XGOTREF(__pyx_t_6);
-      __Pyx_INCREF(__pyx_t_12);
-      __pyx_v_e = __pyx_t_12;
-      /*try:*/ {
 
-        /* "ChronicleLogger.pyx":286
- *                         continue
- *         except Exception as e:
- *             print(f"Error during archive: {e}", file=sys.stderr)             # <<<<<<<<<<<<<<
- * 
- *     def _archive_log(self, filename):
+      /* "ChronicleLogger.pyx":335
+ *         except Exception:
+ *             # NEW: Cross-version exception handling with sys.exc_info() for Py2/3 compat (avoids comma/as syntax errors; binds e safely)
+ *             exc_type, exc_value, exc_tb = sys.exc_info()             # <<<<<<<<<<<<<<
+ *             e = exc_value  # Access e in both Py2 and Py3
+ *             # NEW: Replaced f-string with .format() (already done, but confirmed for compat)
 */
-        __pyx_t_4 = NULL;
-        __Pyx_INCREF(__pyx_builtin_print);
-        __pyx_t_17 = __pyx_builtin_print; 
-        __pyx_t_18 = __Pyx_PyObject_FormatSimple(__pyx_v_e, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_18)) __PYX_ERR(0, 286, __pyx_L29_error)
-        __Pyx_GOTREF(__pyx_t_18);
-        __pyx_t_19 = __Pyx_PyUnicode_Concat(__pyx_mstate_global->__pyx_kp_u_Error_during_archive, __pyx_t_18); if (unlikely(!__pyx_t_19)) __PYX_ERR(0, 286, __pyx_L29_error)
-        __Pyx_GOTREF(__pyx_t_19);
+      __pyx_t_4 = NULL;
+      __Pyx_GetModuleGlobalName(__pyx_t_17, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_17)) __PYX_ERR(0, 335, __pyx_L5_except_error)
+      __Pyx_GOTREF(__pyx_t_17);
+      __pyx_t_18 = __Pyx_PyObject_GetAttrStr(__pyx_t_17, __pyx_mstate_global->__pyx_n_u_exc_info); if (unlikely(!__pyx_t_18)) __PYX_ERR(0, 335, __pyx_L5_except_error)
+      __Pyx_GOTREF(__pyx_t_18);
+      __Pyx_DECREF(__pyx_t_17); __pyx_t_17 = 0;
+      __pyx_t_8 = 1;
+      #if CYTHON_UNPACK_METHODS
+      if (unlikely(PyMethod_Check(__pyx_t_18))) {
+        __pyx_t_4 = PyMethod_GET_SELF(__pyx_t_18);
+        assert(__pyx_t_4);
+        PyObject* __pyx__function = PyMethod_GET_FUNCTION(__pyx_t_18);
+        __Pyx_INCREF(__pyx_t_4);
+        __Pyx_INCREF(__pyx__function);
+        __Pyx_DECREF_SET(__pyx_t_18, __pyx__function);
+        __pyx_t_8 = 0;
+      }
+      #endif
+      {
+        PyObject *__pyx_callargs[2] = {__pyx_t_4, NULL};
+        __pyx_t_5 = __Pyx_PyObject_FastCall(__pyx_t_18, __pyx_callargs+__pyx_t_8, (1-__pyx_t_8) | (__pyx_t_8*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+        __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
         __Pyx_DECREF(__pyx_t_18); __pyx_t_18 = 0;
-        __Pyx_GetModuleGlobalName(__pyx_t_18, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_18)) __PYX_ERR(0, 286, __pyx_L29_error)
-        __Pyx_GOTREF(__pyx_t_18);
-        __pyx_t_20 = __Pyx_PyObject_GetAttrStr(__pyx_t_18, __pyx_mstate_global->__pyx_n_u_stderr); if (unlikely(!__pyx_t_20)) __PYX_ERR(0, 286, __pyx_L29_error)
-        __Pyx_GOTREF(__pyx_t_20);
-        __Pyx_DECREF(__pyx_t_18); __pyx_t_18 = 0;
-        __pyx_t_8 = 1;
-        {
-          PyObject *__pyx_callargs[2 + ((CYTHON_VECTORCALL) ? 1 : 0)] = {__pyx_t_4, __pyx_t_19};
-          __pyx_t_18 = __Pyx_MakeVectorcallBuilderKwds(1); if (unlikely(!__pyx_t_18)) __PYX_ERR(0, 286, __pyx_L29_error)
-          __Pyx_GOTREF(__pyx_t_18);
-          if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_file, __pyx_t_20, __pyx_t_18, __pyx_callargs+2, 0) < 0) __PYX_ERR(0, 286, __pyx_L29_error)
-          __pyx_t_5 = __Pyx_Object_Vectorcall_CallFromBuilder(__pyx_t_17, __pyx_callargs+__pyx_t_8, (2-__pyx_t_8) | (__pyx_t_8*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET), __pyx_t_18);
-          __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-          __Pyx_DECREF(__pyx_t_19); __pyx_t_19 = 0;
-          __Pyx_DECREF(__pyx_t_20); __pyx_t_20 = 0;
-          __Pyx_DECREF(__pyx_t_18); __pyx_t_18 = 0;
-          __Pyx_DECREF(__pyx_t_17); __pyx_t_17 = 0;
-          if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 286, __pyx_L29_error)
-          __Pyx_GOTREF(__pyx_t_5);
+        if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 335, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_5);
+      }
+      if ((likely(PyTuple_CheckExact(__pyx_t_5))) || (PyList_CheckExact(__pyx_t_5))) {
+        PyObject* sequence = __pyx_t_5;
+        Py_ssize_t size = __Pyx_PySequence_SIZE(sequence);
+        if (unlikely(size != 3)) {
+          if (size > 3) __Pyx_RaiseTooManyValuesError(3);
+          else if (size >= 0) __Pyx_RaiseNeedMoreValuesError(size);
+          __PYX_ERR(0, 335, __pyx_L5_except_error)
         }
+        #if CYTHON_ASSUME_SAFE_MACROS && !CYTHON_AVOID_BORROWED_REFS
+        if (likely(PyTuple_CheckExact(sequence))) {
+          __pyx_t_18 = PyTuple_GET_ITEM(sequence, 0);
+          __Pyx_INCREF(__pyx_t_18);
+          __pyx_t_4 = PyTuple_GET_ITEM(sequence, 1);
+          __Pyx_INCREF(__pyx_t_4);
+          __pyx_t_17 = PyTuple_GET_ITEM(sequence, 2);
+          __Pyx_INCREF(__pyx_t_17);
+        } else {
+          __pyx_t_18 = __Pyx_PyList_GetItemRef(sequence, 0);
+          if (unlikely(!__pyx_t_18)) __PYX_ERR(0, 335, __pyx_L5_except_error)
+          __Pyx_XGOTREF(__pyx_t_18);
+          __pyx_t_4 = __Pyx_PyList_GetItemRef(sequence, 1);
+          if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 335, __pyx_L5_except_error)
+          __Pyx_XGOTREF(__pyx_t_4);
+          __pyx_t_17 = __Pyx_PyList_GetItemRef(sequence, 2);
+          if (unlikely(!__pyx_t_17)) __PYX_ERR(0, 335, __pyx_L5_except_error)
+          __Pyx_XGOTREF(__pyx_t_17);
+        }
+        #else
+        __pyx_t_18 = __Pyx_PySequence_ITEM(sequence, 0); if (unlikely(!__pyx_t_18)) __PYX_ERR(0, 335, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_18);
+        __pyx_t_4 = __Pyx_PySequence_ITEM(sequence, 1); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 335, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_4);
+        __pyx_t_17 = __Pyx_PySequence_ITEM(sequence, 2); if (unlikely(!__pyx_t_17)) __PYX_ERR(0, 335, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_17);
+        #endif
         __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
+      } else {
+        Py_ssize_t index = -1;
+        __pyx_t_19 = PyObject_GetIter(__pyx_t_5); if (unlikely(!__pyx_t_19)) __PYX_ERR(0, 335, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_19);
+        __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
+        __pyx_t_20 = (CYTHON_COMPILING_IN_LIMITED_API) ? PyIter_Next : __Pyx_PyObject_GetIterNextFunc(__pyx_t_19);
+        index = 0; __pyx_t_18 = __pyx_t_20(__pyx_t_19); if (unlikely(!__pyx_t_18)) goto __pyx_L26_unpacking_failed;
+        __Pyx_GOTREF(__pyx_t_18);
+        index = 1; __pyx_t_4 = __pyx_t_20(__pyx_t_19); if (unlikely(!__pyx_t_4)) goto __pyx_L26_unpacking_failed;
+        __Pyx_GOTREF(__pyx_t_4);
+        index = 2; __pyx_t_17 = __pyx_t_20(__pyx_t_19); if (unlikely(!__pyx_t_17)) goto __pyx_L26_unpacking_failed;
+        __Pyx_GOTREF(__pyx_t_17);
+        if (__Pyx_IternextUnpackEndCheck(__pyx_t_20(__pyx_t_19), 3) < 0) __PYX_ERR(0, 335, __pyx_L5_except_error)
+        __pyx_t_20 = NULL;
+        __Pyx_DECREF(__pyx_t_19); __pyx_t_19 = 0;
+        goto __pyx_L27_unpacking_done;
+        __pyx_L26_unpacking_failed:;
+        __Pyx_DECREF(__pyx_t_19); __pyx_t_19 = 0;
+        __pyx_t_20 = NULL;
+        if (__Pyx_IterFinish() == 0) __Pyx_RaiseNeedMoreValuesError(index);
+        __PYX_ERR(0, 335, __pyx_L5_except_error)
+        __pyx_L27_unpacking_done:;
       }
+      __pyx_v_exc_type = __pyx_t_18;
+      __pyx_t_18 = 0;
+      __pyx_v_exc_value = __pyx_t_4;
+      __pyx_t_4 = 0;
+      __pyx_v_exc_tb = __pyx_t_17;
+      __pyx_t_17 = 0;
 
-      /* "ChronicleLogger.pyx":285
- *                     except ValueError:
- *                         continue
- *         except Exception as e:             # <<<<<<<<<<<<<<
- *             print(f"Error during archive: {e}", file=sys.stderr)
+      /* "ChronicleLogger.pyx":336
+ *             # NEW: Cross-version exception handling with sys.exc_info() for Py2/3 compat (avoids comma/as syntax errors; binds e safely)
+ *             exc_type, exc_value, exc_tb = sys.exc_info()
+ *             e = exc_value  # Access e in both Py2 and Py3             # <<<<<<<<<<<<<<
+ *             # NEW: Replaced f-string with .format() (already done, but confirmed for compat)
+ *             print("Error during archive: {0}".format(e), file=sys.stderr)
+*/
+      __Pyx_INCREF(__pyx_v_exc_value);
+      __pyx_v_e = __pyx_v_exc_value;
+
+      /* "ChronicleLogger.pyx":338
+ *             e = exc_value  # Access e in both Py2 and Py3
+ *             # NEW: Replaced f-string with .format() (already done, but confirmed for compat)
+ *             print("Error during archive: {0}".format(e), file=sys.stderr)             # <<<<<<<<<<<<<<
+ * 
  * 
 */
-      /*finally:*/ {
-        /*normal exit:*/{
-          __Pyx_DECREF(__pyx_v_e); __pyx_v_e = 0;
-          goto __pyx_L30;
-        }
-        __pyx_L29_error:;
-        /*exception exit:*/{
-          __Pyx_PyThreadState_declare
-          __Pyx_PyThreadState_assign
-          __pyx_t_15 = 0; __pyx_t_14 = 0; __pyx_t_13 = 0; __pyx_t_23 = 0; __pyx_t_24 = 0; __pyx_t_25 = 0;
-          __Pyx_XDECREF(__pyx_t_17); __pyx_t_17 = 0;
-          __Pyx_XDECREF(__pyx_t_18); __pyx_t_18 = 0;
-          __Pyx_XDECREF(__pyx_t_19); __pyx_t_19 = 0;
-          __Pyx_XDECREF(__pyx_t_20); __pyx_t_20 = 0;
-          __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-          __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
-           __Pyx_ExceptionSwap(&__pyx_t_23, &__pyx_t_24, &__pyx_t_25);
-          if ( unlikely(__Pyx_GetException(&__pyx_t_15, &__pyx_t_14, &__pyx_t_13) < 0)) __Pyx_ErrFetch(&__pyx_t_15, &__pyx_t_14, &__pyx_t_13);
-          __Pyx_XGOTREF(__pyx_t_15);
-          __Pyx_XGOTREF(__pyx_t_14);
-          __Pyx_XGOTREF(__pyx_t_13);
-          __Pyx_XGOTREF(__pyx_t_23);
-          __Pyx_XGOTREF(__pyx_t_24);
-          __Pyx_XGOTREF(__pyx_t_25);
-          __pyx_t_16 = __pyx_lineno; __pyx_t_21 = __pyx_clineno; __pyx_t_22 = __pyx_filename;
-          {
-            __Pyx_DECREF(__pyx_v_e); __pyx_v_e = 0;
-          }
-          __Pyx_XGIVEREF(__pyx_t_23);
-          __Pyx_XGIVEREF(__pyx_t_24);
-          __Pyx_XGIVEREF(__pyx_t_25);
-          __Pyx_ExceptionReset(__pyx_t_23, __pyx_t_24, __pyx_t_25);
-          __Pyx_XGIVEREF(__pyx_t_15);
-          __Pyx_XGIVEREF(__pyx_t_14);
-          __Pyx_XGIVEREF(__pyx_t_13);
-          __Pyx_ErrRestore(__pyx_t_15, __pyx_t_14, __pyx_t_13);
-          __pyx_t_15 = 0; __pyx_t_14 = 0; __pyx_t_13 = 0; __pyx_t_23 = 0; __pyx_t_24 = 0; __pyx_t_25 = 0;
-          __pyx_lineno = __pyx_t_16; __pyx_clineno = __pyx_t_21; __pyx_filename = __pyx_t_22;
-          goto __pyx_L5_except_error;
-        }
-        __pyx_L30:;
+      __pyx_t_17 = NULL;
+      __Pyx_INCREF(__pyx_builtin_print);
+      __pyx_t_4 = __pyx_builtin_print; 
+      __pyx_t_19 = __pyx_mstate_global->__pyx_kp_u_Error_during_archive_0;
+      __Pyx_INCREF(__pyx_t_19);
+      __pyx_t_8 = 0;
+      {
+        PyObject *__pyx_callargs[2] = {__pyx_t_19, __pyx_v_e};
+        __pyx_t_18 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_format, __pyx_callargs+__pyx_t_8, (2-__pyx_t_8) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+        __Pyx_XDECREF(__pyx_t_19); __pyx_t_19 = 0;
+        if (unlikely(!__pyx_t_18)) __PYX_ERR(0, 338, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_18);
       }
+      __Pyx_GetModuleGlobalName(__pyx_t_19, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_19)) __PYX_ERR(0, 338, __pyx_L5_except_error)
+      __Pyx_GOTREF(__pyx_t_19);
+      __pyx_t_21 = __Pyx_PyObject_GetAttrStr(__pyx_t_19, __pyx_mstate_global->__pyx_n_u_stderr); if (unlikely(!__pyx_t_21)) __PYX_ERR(0, 338, __pyx_L5_except_error)
+      __Pyx_GOTREF(__pyx_t_21);
+      __Pyx_DECREF(__pyx_t_19); __pyx_t_19 = 0;
+      __pyx_t_8 = 1;
+      {
+        PyObject *__pyx_callargs[2 + ((CYTHON_VECTORCALL) ? 1 : 0)] = {__pyx_t_17, __pyx_t_18};
+        __pyx_t_19 = __Pyx_MakeVectorcallBuilderKwds(1); if (unlikely(!__pyx_t_19)) __PYX_ERR(0, 338, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_19);
+        if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_file, __pyx_t_21, __pyx_t_19, __pyx_callargs+2, 0) < 0) __PYX_ERR(0, 338, __pyx_L5_except_error)
+        __pyx_t_5 = __Pyx_Object_Vectorcall_CallFromBuilder(__pyx_t_4, __pyx_callargs+__pyx_t_8, (2-__pyx_t_8) | (__pyx_t_8*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET), __pyx_t_19);
+        __Pyx_XDECREF(__pyx_t_17); __pyx_t_17 = 0;
+        __Pyx_DECREF(__pyx_t_18); __pyx_t_18 = 0;
+        __Pyx_DECREF(__pyx_t_21); __pyx_t_21 = 0;
+        __Pyx_DECREF(__pyx_t_19); __pyx_t_19 = 0;
+        __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+        if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 338, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_5);
+      }
+      __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
       __Pyx_XDECREF(__pyx_t_7); __pyx_t_7 = 0;
       __Pyx_XDECREF(__pyx_t_12); __pyx_t_12 = 0;
       __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
@@ -9953,7 +10637,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
     }
     goto __pyx_L5_except_error;
 
-    /* "ChronicleLogger.pyx":275
+    /* "ChronicleLogger.pyx":323
  * 
  *     def archive_old_logs(self):
  *         try:             # <<<<<<<<<<<<<<
@@ -9974,7 +10658,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
     __pyx_L8_try_end:;
   }
 
-  /* "ChronicleLogger.pyx":274
+  /* "ChronicleLogger.pyx":322
  *         self.remove_old_logs()
  * 
  *     def archive_old_logs(self):             # <<<<<<<<<<<<<<
@@ -9994,21 +10678,24 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_34archive_old_logs
   __Pyx_XDECREF(__pyx_t_17);
   __Pyx_XDECREF(__pyx_t_18);
   __Pyx_XDECREF(__pyx_t_19);
-  __Pyx_XDECREF(__pyx_t_20);
+  __Pyx_XDECREF(__pyx_t_21);
   __Pyx_AddTraceback("ChronicleLogger.ChronicleLogger.archive_old_logs", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = NULL;
   __pyx_L0:;
   __Pyx_XDECREF(__pyx_v_file);
   __Pyx_XDECREF(__pyx_v_date_part);
   __Pyx_XDECREF(__pyx_v_log_date);
+  __Pyx_XDECREF(__pyx_v_exc_type);
+  __Pyx_XDECREF(__pyx_v_exc_value);
+  __Pyx_XDECREF(__pyx_v_exc_tb);
   __Pyx_XDECREF(__pyx_v_e);
   __Pyx_XGIVEREF(__pyx_r);
   __Pyx_RefNannyFinishContext();
   return __pyx_r;
 }
 
-/* "ChronicleLogger.pyx":288
- *             print(f"Error during archive: {e}", file=sys.stderr)
+/* "ChronicleLogger.pyx":341
+ * 
  * 
  *     def _archive_log(self, filename):             # <<<<<<<<<<<<<<
  *         log_path = os.path.join(self.__logdir__, filename)
@@ -10055,39 +10742,39 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   {
     PyObject ** const __pyx_pyargnames[] = {&__pyx_mstate_global->__pyx_n_u_self,&__pyx_mstate_global->__pyx_n_u_filename,0};
     const Py_ssize_t __pyx_kwds_len = (__pyx_kwds) ? __Pyx_NumKwargs_FASTCALL(__pyx_kwds) : 0;
-    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 288, __pyx_L3_error)
+    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 341, __pyx_L3_error)
     if (__pyx_kwds_len > 0) {
       switch (__pyx_nargs) {
         case  2:
         values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 288, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 341, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 288, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 341, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  0: break;
         default: goto __pyx_L5_argtuple_error;
       }
       const Py_ssize_t kwd_pos_args = __pyx_nargs;
-      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "_archive_log", 0) < 0) __PYX_ERR(0, 288, __pyx_L3_error)
+      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "_archive_log", 0) < 0) __PYX_ERR(0, 341, __pyx_L3_error)
       for (Py_ssize_t i = __pyx_nargs; i < 2; i++) {
-        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("_archive_log", 1, 2, 2, i); __PYX_ERR(0, 288, __pyx_L3_error) }
+        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("_archive_log", 1, 2, 2, i); __PYX_ERR(0, 341, __pyx_L3_error) }
       }
     } else if (unlikely(__pyx_nargs != 2)) {
       goto __pyx_L5_argtuple_error;
     } else {
       values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 288, __pyx_L3_error)
+      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 341, __pyx_L3_error)
       values[1] = __Pyx_ArgRef_FASTCALL(__pyx_args, 1);
-      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 288, __pyx_L3_error)
+      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[1])) __PYX_ERR(0, 341, __pyx_L3_error)
     }
     __pyx_v_self = values[0];
     __pyx_v_filename = values[1];
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("_archive_log", 1, 2, 2, __pyx_nargs); __PYX_ERR(0, 288, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("_archive_log", 1, 2, 2, __pyx_nargs); __PYX_ERR(0, 341, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -10112,6 +10799,9 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_36_archive_log(CYT
   PyObject *__pyx_v_log_path = NULL;
   PyObject *__pyx_v_archive_path = NULL;
   PyObject *__pyx_v_tar = NULL;
+  CYTHON_UNUSED PyObject *__pyx_v_exc_type = NULL;
+  PyObject *__pyx_v_exc_value = NULL;
+  CYTHON_UNUSED PyObject *__pyx_v_exc_tb = NULL;
   PyObject *__pyx_v_e = NULL;
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
@@ -10135,31 +10825,27 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_36_archive_log(CYT
   PyObject *__pyx_t_18 = NULL;
   PyObject *__pyx_t_19 = NULL;
   PyObject *__pyx_t_20 = NULL;
-  PyObject *__pyx_t_21[4];
-  PyObject *__pyx_t_22 = NULL;
-  int __pyx_t_23;
-  char const *__pyx_t_24;
-  PyObject *__pyx_t_25 = NULL;
+  PyObject *(*__pyx_t_21)(PyObject *);
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("_archive_log", 0);
 
-  /* "ChronicleLogger.pyx":289
+  /* "ChronicleLogger.pyx":342
  * 
  *     def _archive_log(self, filename):
  *         log_path = os.path.join(self.__logdir__, filename)             # <<<<<<<<<<<<<<
  *         archive_path = log_path + ".tar.gz"
  *         try:
 */
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 289, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 342, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_path); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 289, __pyx_L1_error)
+  __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_path); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 342, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_4);
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __pyx_t_2 = __pyx_t_4;
   __Pyx_INCREF(__pyx_t_2);
-  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 289, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 342, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __pyx_t_5 = 0;
   {
@@ -10168,25 +10854,25 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_36_archive_log(CYT
     __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
     __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
     __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 289, __pyx_L1_error)
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 342, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
   }
   __pyx_v_log_path = __pyx_t_1;
   __pyx_t_1 = 0;
 
-  /* "ChronicleLogger.pyx":290
+  /* "ChronicleLogger.pyx":343
  *     def _archive_log(self, filename):
  *         log_path = os.path.join(self.__logdir__, filename)
  *         archive_path = log_path + ".tar.gz"             # <<<<<<<<<<<<<<
  *         try:
  *             with tarfile.open(archive_path, "w:gz") as tar:
 */
-  __pyx_t_1 = PyNumber_Add(__pyx_v_log_path, __pyx_mstate_global->__pyx_kp_u_tar_gz); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 290, __pyx_L1_error)
+  __pyx_t_1 = PyNumber_Add(__pyx_v_log_path, __pyx_mstate_global->__pyx_kp_u_tar_gz); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 343, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_v_archive_path = __pyx_t_1;
   __pyx_t_1 = 0;
 
-  /* "ChronicleLogger.pyx":291
+  /* "ChronicleLogger.pyx":344
  *         log_path = os.path.join(self.__logdir__, filename)
  *         archive_path = log_path + ".tar.gz"
  *         try:             # <<<<<<<<<<<<<<
@@ -10202,7 +10888,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_36_archive_log(CYT
     __Pyx_XGOTREF(__pyx_t_8);
     /*try:*/ {
 
-      /* "ChronicleLogger.pyx":292
+      /* "ChronicleLogger.pyx":345
  *         archive_path = log_path + ".tar.gz"
  *         try:
  *             with tarfile.open(archive_path, "w:gz") as tar:             # <<<<<<<<<<<<<<
@@ -10211,9 +10897,9 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_36_archive_log(CYT
 */
       /*with:*/ {
         __pyx_t_4 = NULL;
-        __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_tarfile); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 292, __pyx_L3_error)
+        __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_tarfile); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 345, __pyx_L3_error)
         __Pyx_GOTREF(__pyx_t_3);
-        __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_open); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 292, __pyx_L3_error)
+        __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_open); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 345, __pyx_L3_error)
         __Pyx_GOTREF(__pyx_t_2);
         __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
         __pyx_t_5 = 1;
@@ -10233,13 +10919,13 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_36_archive_log(CYT
           __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_2, __pyx_callargs+__pyx_t_5, (3-__pyx_t_5) | (__pyx_t_5*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
           __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
           __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-          if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 292, __pyx_L3_error)
+          if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 345, __pyx_L3_error)
           __Pyx_GOTREF(__pyx_t_1);
         }
-        __pyx_t_9 = __Pyx_PyObject_LookupSpecial(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_exit); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 292, __pyx_L3_error)
+        __pyx_t_9 = __Pyx_PyObject_LookupSpecial(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_exit); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 345, __pyx_L3_error)
         __Pyx_GOTREF(__pyx_t_9);
         __pyx_t_4 = NULL;
-        __pyx_t_3 = __Pyx_PyObject_LookupSpecial(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_enter); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 292, __pyx_L9_error)
+        __pyx_t_3 = __Pyx_PyObject_LookupSpecial(__pyx_t_1, __pyx_mstate_global->__pyx_n_u_enter); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 345, __pyx_L9_error)
         __Pyx_GOTREF(__pyx_t_3);
         __pyx_t_5 = 1;
         #if CYTHON_UNPACK_METHODS
@@ -10258,7 +10944,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_36_archive_log(CYT
           __pyx_t_2 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+__pyx_t_5, (1-__pyx_t_5) | (__pyx_t_5*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
           __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
           __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-          if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 292, __pyx_L9_error)
+          if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 345, __pyx_L9_error)
           __Pyx_GOTREF(__pyx_t_2);
         }
         __pyx_t_3 = __pyx_t_2;
@@ -10276,30 +10962,30 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_36_archive_log(CYT
               __pyx_v_tar = __pyx_t_3;
               __pyx_t_3 = 0;
 
-              /* "ChronicleLogger.pyx":293
+              /* "ChronicleLogger.pyx":346
  *         try:
  *             with tarfile.open(archive_path, "w:gz") as tar:
  *                 tar.add(log_path, arcname=filename)             # <<<<<<<<<<<<<<
  *             os.remove(log_path)
- *             print(f"Archived log file: {archive_path}")
+ *             # NEW: Replaced f-string with .format()
 */
               __pyx_t_1 = __pyx_v_tar;
               __Pyx_INCREF(__pyx_t_1);
               __pyx_t_5 = 0;
               {
                 PyObject *__pyx_callargs[2 + ((CYTHON_VECTORCALL) ? 1 : 0)] = {__pyx_t_1, __pyx_v_log_path};
-                __pyx_t_2 = __Pyx_MakeVectorcallBuilderKwds(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 293, __pyx_L13_error)
+                __pyx_t_2 = __Pyx_MakeVectorcallBuilderKwds(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 346, __pyx_L13_error)
                 __Pyx_GOTREF(__pyx_t_2);
-                if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_arcname, __pyx_v_filename, __pyx_t_2, __pyx_callargs+2, 0) < 0) __PYX_ERR(0, 293, __pyx_L13_error)
+                if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_arcname, __pyx_v_filename, __pyx_t_2, __pyx_callargs+2, 0) < 0) __PYX_ERR(0, 346, __pyx_L13_error)
                 __pyx_t_3 = __Pyx_Object_VectorcallMethod_CallFromBuilder(__pyx_mstate_global->__pyx_n_u_add, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET), __pyx_t_2);
                 __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
                 __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-                if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 293, __pyx_L13_error)
+                if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 346, __pyx_L13_error)
                 __Pyx_GOTREF(__pyx_t_3);
               }
               __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-              /* "ChronicleLogger.pyx":292
+              /* "ChronicleLogger.pyx":345
  *         archive_path = log_path + ".tar.gz"
  *         try:
  *             with tarfile.open(archive_path, "w:gz") as tar:             # <<<<<<<<<<<<<<
@@ -10318,20 +11004,20 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_36_archive_log(CYT
             __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
             /*except:*/ {
               __Pyx_AddTraceback("ChronicleLogger.ChronicleLogger._archive_log", __pyx_clineno, __pyx_lineno, __pyx_filename);
-              if (__Pyx_GetException(&__pyx_t_3, &__pyx_t_2, &__pyx_t_1) < 0) __PYX_ERR(0, 292, __pyx_L15_except_error)
+              if (__Pyx_GetException(&__pyx_t_3, &__pyx_t_2, &__pyx_t_1) < 0) __PYX_ERR(0, 345, __pyx_L15_except_error)
               __Pyx_XGOTREF(__pyx_t_3);
               __Pyx_XGOTREF(__pyx_t_2);
               __Pyx_XGOTREF(__pyx_t_1);
-              __pyx_t_4 = PyTuple_Pack(3, __pyx_t_3, __pyx_t_2, __pyx_t_1); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 292, __pyx_L15_except_error)
+              __pyx_t_4 = PyTuple_Pack(3, __pyx_t_3, __pyx_t_2, __pyx_t_1); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 345, __pyx_L15_except_error)
               __Pyx_GOTREF(__pyx_t_4);
               __pyx_t_13 = __Pyx_PyObject_Call(__pyx_t_9, __pyx_t_4, NULL);
               __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
               __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-              if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 292, __pyx_L15_except_error)
+              if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 345, __pyx_L15_except_error)
               __Pyx_GOTREF(__pyx_t_13);
               __pyx_t_14 = __Pyx_PyObject_IsTrue(__pyx_t_13);
               __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
-              if (__pyx_t_14 < 0) __PYX_ERR(0, 292, __pyx_L15_except_error)
+              if (__pyx_t_14 < 0) __PYX_ERR(0, 345, __pyx_L15_except_error)
               __pyx_t_15 = (!__pyx_t_14);
               if (unlikely(__pyx_t_15)) {
                 __Pyx_GIVEREF(__pyx_t_3);
@@ -10339,7 +11025,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_36_archive_log(CYT
                 __Pyx_XGIVEREF(__pyx_t_1);
                 __Pyx_ErrRestoreWithState(__pyx_t_3, __pyx_t_2, __pyx_t_1);
                 __pyx_t_3 = 0;  __pyx_t_2 = 0;  __pyx_t_1 = 0; 
-                __PYX_ERR(0, 292, __pyx_L15_except_error)
+                __PYX_ERR(0, 345, __pyx_L15_except_error)
               }
               __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
               __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
@@ -10365,7 +11051,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_36_archive_log(CYT
             if (__pyx_t_9) {
               __pyx_t_12 = __Pyx_PyObject_Call(__pyx_t_9, __pyx_mstate_global->__pyx_tuple[2], NULL);
               __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
-              if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 292, __pyx_L3_error)
+              if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 345, __pyx_L3_error)
               __Pyx_GOTREF(__pyx_t_12);
               __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
             }
@@ -10380,17 +11066,17 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_36_archive_log(CYT
         __pyx_L22:;
       }
 
-      /* "ChronicleLogger.pyx":294
+      /* "ChronicleLogger.pyx":347
  *             with tarfile.open(archive_path, "w:gz") as tar:
  *                 tar.add(log_path, arcname=filename)
  *             os.remove(log_path)             # <<<<<<<<<<<<<<
- *             print(f"Archived log file: {archive_path}")
- *         except Exception as e:
+ *             # NEW: Replaced f-string with .format()
+ *             print("Archived log file: {0}".format(archive_path))
 */
       __pyx_t_2 = NULL;
-      __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 294, __pyx_L3_error)
+      __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 347, __pyx_L3_error)
       __Pyx_GOTREF(__pyx_t_3);
-      __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_remove); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 294, __pyx_L3_error)
+      __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_remove); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 347, __pyx_L3_error)
       __Pyx_GOTREF(__pyx_t_4);
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
       __pyx_t_5 = 1;
@@ -10410,39 +11096,44 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_36_archive_log(CYT
         __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (__pyx_t_5*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
         __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
         __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-        if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 294, __pyx_L3_error)
+        if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 347, __pyx_L3_error)
         __Pyx_GOTREF(__pyx_t_1);
       }
       __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-      /* "ChronicleLogger.pyx":295
- *                 tar.add(log_path, arcname=filename)
+      /* "ChronicleLogger.pyx":349
  *             os.remove(log_path)
- *             print(f"Archived log file: {archive_path}")             # <<<<<<<<<<<<<<
- *         except Exception as e:
- *             print(f"Error archiving {filename}: {e}", file=sys.stderr)
+ *             # NEW: Replaced f-string with .format()
+ *             print("Archived log file: {0}".format(archive_path))             # <<<<<<<<<<<<<<
+ *         except Exception:
+ *             # NEW: Cross-version exception handling with sys.exc_info() for Py2/3 compat (avoids comma/as syntax errors; binds e safely)
 */
       __pyx_t_4 = NULL;
       __Pyx_INCREF(__pyx_builtin_print);
       __pyx_t_2 = __pyx_builtin_print; 
-      __pyx_t_3 = __Pyx_PyObject_FormatSimple(__pyx_v_archive_path, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 295, __pyx_L3_error)
-      __Pyx_GOTREF(__pyx_t_3);
-      __pyx_t_16 = __Pyx_PyUnicode_Concat(__pyx_mstate_global->__pyx_kp_u_Archived_log_file, __pyx_t_3); if (unlikely(!__pyx_t_16)) __PYX_ERR(0, 295, __pyx_L3_error)
-      __Pyx_GOTREF(__pyx_t_16);
-      __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+      __pyx_t_16 = __pyx_mstate_global->__pyx_kp_u_Archived_log_file_0;
+      __Pyx_INCREF(__pyx_t_16);
+      __pyx_t_5 = 0;
+      {
+        PyObject *__pyx_callargs[2] = {__pyx_t_16, __pyx_v_archive_path};
+        __pyx_t_3 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_format, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+        __Pyx_XDECREF(__pyx_t_16); __pyx_t_16 = 0;
+        if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 349, __pyx_L3_error)
+        __Pyx_GOTREF(__pyx_t_3);
+      }
       __pyx_t_5 = 1;
       {
-        PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_t_16};
+        PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_t_3};
         __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_2, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (__pyx_t_5*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
         __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-        __Pyx_DECREF(__pyx_t_16); __pyx_t_16 = 0;
+        __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
         __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-        if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 295, __pyx_L3_error)
+        if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 349, __pyx_L3_error)
         __Pyx_GOTREF(__pyx_t_1);
       }
       __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-      /* "ChronicleLogger.pyx":291
+      /* "ChronicleLogger.pyx":344
  *         log_path = os.path.join(self.__logdir__, filename)
  *         archive_path = log_path + ".tar.gz"
  *         try:             # <<<<<<<<<<<<<<
@@ -10461,127 +11152,137 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_36_archive_log(CYT
     __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
     __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
 
-    /* "ChronicleLogger.pyx":296
- *             os.remove(log_path)
- *             print(f"Archived log file: {archive_path}")
- *         except Exception as e:             # <<<<<<<<<<<<<<
- *             print(f"Error archiving {filename}: {e}", file=sys.stderr)
- * 
+    /* "ChronicleLogger.pyx":350
+ *             # NEW: Replaced f-string with .format()
+ *             print("Archived log file: {0}".format(archive_path))
+ *         except Exception:             # <<<<<<<<<<<<<<
+ *             # NEW: Cross-version exception handling with sys.exc_info() for Py2/3 compat (avoids comma/as syntax errors; binds e safely)
+ *             exc_type, exc_value, exc_tb = sys.exc_info()
 */
     __pyx_t_17 = __Pyx_PyErr_ExceptionMatches(((PyObject *)(((PyTypeObject*)PyExc_Exception))));
     if (__pyx_t_17) {
       __Pyx_AddTraceback("ChronicleLogger.ChronicleLogger._archive_log", __pyx_clineno, __pyx_lineno, __pyx_filename);
-      if (__Pyx_GetException(&__pyx_t_1, &__pyx_t_2, &__pyx_t_16) < 0) __PYX_ERR(0, 296, __pyx_L5_except_error)
+      if (__Pyx_GetException(&__pyx_t_1, &__pyx_t_2, &__pyx_t_3) < 0) __PYX_ERR(0, 350, __pyx_L5_except_error)
       __Pyx_XGOTREF(__pyx_t_1);
       __Pyx_XGOTREF(__pyx_t_2);
-      __Pyx_XGOTREF(__pyx_t_16);
-      __Pyx_INCREF(__pyx_t_2);
-      __pyx_v_e = __pyx_t_2;
-      /*try:*/ {
+      __Pyx_XGOTREF(__pyx_t_3);
 
-        /* "ChronicleLogger.pyx":297
- *             print(f"Archived log file: {archive_path}")
- *         except Exception as e:
- *             print(f"Error archiving {filename}: {e}", file=sys.stderr)             # <<<<<<<<<<<<<<
- * 
- *     def remove_old_logs(self):
+      /* "ChronicleLogger.pyx":352
+ *         except Exception:
+ *             # NEW: Cross-version exception handling with sys.exc_info() for Py2/3 compat (avoids comma/as syntax errors; binds e safely)
+ *             exc_type, exc_value, exc_tb = sys.exc_info()             # <<<<<<<<<<<<<<
+ *             e = exc_value  # Access e in both Py2 and Py3
+ *             # NEW: Replaced f-string with .format()
 */
-        __pyx_t_3 = NULL;
-        __Pyx_INCREF(__pyx_builtin_print);
-        __pyx_t_18 = __pyx_builtin_print; 
-        __pyx_t_19 = __Pyx_PyObject_FormatSimple(__pyx_v_filename, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_19)) __PYX_ERR(0, 297, __pyx_L28_error)
-        __Pyx_GOTREF(__pyx_t_19);
-        __pyx_t_20 = __Pyx_PyObject_FormatSimple(__pyx_v_e, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_20)) __PYX_ERR(0, 297, __pyx_L28_error)
-        __Pyx_GOTREF(__pyx_t_20);
-        __pyx_t_21[0] = __pyx_mstate_global->__pyx_kp_u_Error_archiving;
-        __pyx_t_21[1] = __pyx_t_19;
-        __pyx_t_21[2] = __pyx_mstate_global->__pyx_kp_u__6;
-        __pyx_t_21[3] = __pyx_t_20;
-        __pyx_t_22 = __Pyx_PyUnicode_Join(__pyx_t_21, 4, 16 + __Pyx_PyUnicode_GET_LENGTH(__pyx_t_19) + 2 + __Pyx_PyUnicode_GET_LENGTH(__pyx_t_20), 127 | __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_19) | __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_20));
-        if (unlikely(!__pyx_t_22)) __PYX_ERR(0, 297, __pyx_L28_error)
-        __Pyx_GOTREF(__pyx_t_22);
+      __pyx_t_16 = NULL;
+      __Pyx_GetModuleGlobalName(__pyx_t_18, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_18)) __PYX_ERR(0, 352, __pyx_L5_except_error)
+      __Pyx_GOTREF(__pyx_t_18);
+      __pyx_t_19 = __Pyx_PyObject_GetAttrStr(__pyx_t_18, __pyx_mstate_global->__pyx_n_u_exc_info); if (unlikely(!__pyx_t_19)) __PYX_ERR(0, 352, __pyx_L5_except_error)
+      __Pyx_GOTREF(__pyx_t_19);
+      __Pyx_DECREF(__pyx_t_18); __pyx_t_18 = 0;
+      __pyx_t_5 = 1;
+      #if CYTHON_UNPACK_METHODS
+      if (unlikely(PyMethod_Check(__pyx_t_19))) {
+        __pyx_t_16 = PyMethod_GET_SELF(__pyx_t_19);
+        assert(__pyx_t_16);
+        PyObject* __pyx__function = PyMethod_GET_FUNCTION(__pyx_t_19);
+        __Pyx_INCREF(__pyx_t_16);
+        __Pyx_INCREF(__pyx__function);
+        __Pyx_DECREF_SET(__pyx_t_19, __pyx__function);
+        __pyx_t_5 = 0;
+      }
+      #endif
+      {
+        PyObject *__pyx_callargs[2] = {__pyx_t_16, NULL};
+        __pyx_t_4 = __Pyx_PyObject_FastCall(__pyx_t_19, __pyx_callargs+__pyx_t_5, (1-__pyx_t_5) | (__pyx_t_5*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+        __Pyx_XDECREF(__pyx_t_16); __pyx_t_16 = 0;
         __Pyx_DECREF(__pyx_t_19); __pyx_t_19 = 0;
-        __Pyx_DECREF(__pyx_t_20); __pyx_t_20 = 0;
-        __Pyx_GetModuleGlobalName(__pyx_t_20, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_20)) __PYX_ERR(0, 297, __pyx_L28_error)
-        __Pyx_GOTREF(__pyx_t_20);
-        __pyx_t_19 = __Pyx_PyObject_GetAttrStr(__pyx_t_20, __pyx_mstate_global->__pyx_n_u_stderr); if (unlikely(!__pyx_t_19)) __PYX_ERR(0, 297, __pyx_L28_error)
+        if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 352, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_4);
+      }
+      if ((likely(PyTuple_CheckExact(__pyx_t_4))) || (PyList_CheckExact(__pyx_t_4))) {
+        PyObject* sequence = __pyx_t_4;
+        Py_ssize_t size = __Pyx_PySequence_SIZE(sequence);
+        if (unlikely(size != 3)) {
+          if (size > 3) __Pyx_RaiseTooManyValuesError(3);
+          else if (size >= 0) __Pyx_RaiseNeedMoreValuesError(size);
+          __PYX_ERR(0, 352, __pyx_L5_except_error)
+        }
+        #if CYTHON_ASSUME_SAFE_MACROS && !CYTHON_AVOID_BORROWED_REFS
+        if (likely(PyTuple_CheckExact(sequence))) {
+          __pyx_t_19 = PyTuple_GET_ITEM(sequence, 0);
+          __Pyx_INCREF(__pyx_t_19);
+          __pyx_t_16 = PyTuple_GET_ITEM(sequence, 1);
+          __Pyx_INCREF(__pyx_t_16);
+          __pyx_t_18 = PyTuple_GET_ITEM(sequence, 2);
+          __Pyx_INCREF(__pyx_t_18);
+        } else {
+          __pyx_t_19 = __Pyx_PyList_GetItemRef(sequence, 0);
+          if (unlikely(!__pyx_t_19)) __PYX_ERR(0, 352, __pyx_L5_except_error)
+          __Pyx_XGOTREF(__pyx_t_19);
+          __pyx_t_16 = __Pyx_PyList_GetItemRef(sequence, 1);
+          if (unlikely(!__pyx_t_16)) __PYX_ERR(0, 352, __pyx_L5_except_error)
+          __Pyx_XGOTREF(__pyx_t_16);
+          __pyx_t_18 = __Pyx_PyList_GetItemRef(sequence, 2);
+          if (unlikely(!__pyx_t_18)) __PYX_ERR(0, 352, __pyx_L5_except_error)
+          __Pyx_XGOTREF(__pyx_t_18);
+        }
+        #else
+        __pyx_t_19 = __Pyx_PySequence_ITEM(sequence, 0); if (unlikely(!__pyx_t_19)) __PYX_ERR(0, 352, __pyx_L5_except_error)
         __Pyx_GOTREF(__pyx_t_19);
-        __Pyx_DECREF(__pyx_t_20); __pyx_t_20 = 0;
-        __pyx_t_5 = 1;
-        {
-          PyObject *__pyx_callargs[2 + ((CYTHON_VECTORCALL) ? 1 : 0)] = {__pyx_t_3, __pyx_t_22};
-          __pyx_t_20 = __Pyx_MakeVectorcallBuilderKwds(1); if (unlikely(!__pyx_t_20)) __PYX_ERR(0, 297, __pyx_L28_error)
-          __Pyx_GOTREF(__pyx_t_20);
-          if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_file, __pyx_t_19, __pyx_t_20, __pyx_callargs+2, 0) < 0) __PYX_ERR(0, 297, __pyx_L28_error)
-          __pyx_t_4 = __Pyx_Object_Vectorcall_CallFromBuilder(__pyx_t_18, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (__pyx_t_5*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET), __pyx_t_20);
-          __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
-          __Pyx_DECREF(__pyx_t_22); __pyx_t_22 = 0;
-          __Pyx_DECREF(__pyx_t_19); __pyx_t_19 = 0;
-          __Pyx_DECREF(__pyx_t_20); __pyx_t_20 = 0;
-          __Pyx_DECREF(__pyx_t_18); __pyx_t_18 = 0;
-          if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 297, __pyx_L28_error)
-          __Pyx_GOTREF(__pyx_t_4);
-        }
+        __pyx_t_16 = __Pyx_PySequence_ITEM(sequence, 1); if (unlikely(!__pyx_t_16)) __PYX_ERR(0, 352, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_16);
+        __pyx_t_18 = __Pyx_PySequence_ITEM(sequence, 2); if (unlikely(!__pyx_t_18)) __PYX_ERR(0, 352, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_18);
+        #endif
         __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+      } else {
+        Py_ssize_t index = -1;
+        __pyx_t_20 = PyObject_GetIter(__pyx_t_4); if (unlikely(!__pyx_t_20)) __PYX_ERR(0, 352, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_20);
+        __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+        __pyx_t_21 = (CYTHON_COMPILING_IN_LIMITED_API) ? PyIter_Next : __Pyx_PyObject_GetIterNextFunc(__pyx_t_20);
+        index = 0; __pyx_t_19 = __pyx_t_21(__pyx_t_20); if (unlikely(!__pyx_t_19)) goto __pyx_L25_unpacking_failed;
+        __Pyx_GOTREF(__pyx_t_19);
+        index = 1; __pyx_t_16 = __pyx_t_21(__pyx_t_20); if (unlikely(!__pyx_t_16)) goto __pyx_L25_unpacking_failed;
+        __Pyx_GOTREF(__pyx_t_16);
+        index = 2; __pyx_t_18 = __pyx_t_21(__pyx_t_20); if (unlikely(!__pyx_t_18)) goto __pyx_L25_unpacking_failed;
+        __Pyx_GOTREF(__pyx_t_18);
+        if (__Pyx_IternextUnpackEndCheck(__pyx_t_21(__pyx_t_20), 3) < 0) __PYX_ERR(0, 352, __pyx_L5_except_error)
+        __pyx_t_21 = NULL;
+        __Pyx_DECREF(__pyx_t_20); __pyx_t_20 = 0;
+        goto __pyx_L26_unpacking_done;
+        __pyx_L25_unpacking_failed:;
+        __Pyx_DECREF(__pyx_t_20); __pyx_t_20 = 0;
+        __pyx_t_21 = NULL;
+        if (__Pyx_IterFinish() == 0) __Pyx_RaiseNeedMoreValuesError(index);
+        __PYX_ERR(0, 352, __pyx_L5_except_error)
+        __pyx_L26_unpacking_done:;
       }
+      __pyx_v_exc_type = __pyx_t_19;
+      __pyx_t_19 = 0;
+      __pyx_v_exc_value = __pyx_t_16;
+      __pyx_t_16 = 0;
+      __pyx_v_exc_tb = __pyx_t_18;
+      __pyx_t_18 = 0;
 
-      /* "ChronicleLogger.pyx":296
- *             os.remove(log_path)
- *             print(f"Archived log file: {archive_path}")
- *         except Exception as e:             # <<<<<<<<<<<<<<
- *             print(f"Error archiving {filename}: {e}", file=sys.stderr)
- * 
+      /* "ChronicleLogger.pyx":353
+ *             # NEW: Cross-version exception handling with sys.exc_info() for Py2/3 compat (avoids comma/as syntax errors; binds e safely)
+ *             exc_type, exc_value, exc_tb = sys.exc_info()
+ *             e = exc_value  # Access e in both Py2 and Py3             # <<<<<<<<<<<<<<
+ *             # NEW: Replaced f-string with .format()
+ *         print("Error archiving {0}: {1}".format(filename, e), file=sys.stderr)
 */
-      /*finally:*/ {
-        /*normal exit:*/{
-          __Pyx_DECREF(__pyx_v_e); __pyx_v_e = 0;
-          goto __pyx_L29;
-        }
-        __pyx_L28_error:;
-        /*exception exit:*/{
-          __Pyx_PyThreadState_declare
-          __Pyx_PyThreadState_assign
-          __pyx_t_9 = 0; __pyx_t_12 = 0; __pyx_t_11 = 0; __pyx_t_10 = 0; __pyx_t_13 = 0; __pyx_t_25 = 0;
-          __Pyx_XDECREF(__pyx_t_18); __pyx_t_18 = 0;
-          __Pyx_XDECREF(__pyx_t_19); __pyx_t_19 = 0;
-          __Pyx_XDECREF(__pyx_t_20); __pyx_t_20 = 0;
-          __Pyx_XDECREF(__pyx_t_22); __pyx_t_22 = 0;
-          __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
-          __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-           __Pyx_ExceptionSwap(&__pyx_t_10, &__pyx_t_13, &__pyx_t_25);
-          if ( unlikely(__Pyx_GetException(&__pyx_t_9, &__pyx_t_12, &__pyx_t_11) < 0)) __Pyx_ErrFetch(&__pyx_t_9, &__pyx_t_12, &__pyx_t_11);
-          __Pyx_XGOTREF(__pyx_t_9);
-          __Pyx_XGOTREF(__pyx_t_12);
-          __Pyx_XGOTREF(__pyx_t_11);
-          __Pyx_XGOTREF(__pyx_t_10);
-          __Pyx_XGOTREF(__pyx_t_13);
-          __Pyx_XGOTREF(__pyx_t_25);
-          __pyx_t_17 = __pyx_lineno; __pyx_t_23 = __pyx_clineno; __pyx_t_24 = __pyx_filename;
-          {
-            __Pyx_DECREF(__pyx_v_e); __pyx_v_e = 0;
-          }
-          __Pyx_XGIVEREF(__pyx_t_10);
-          __Pyx_XGIVEREF(__pyx_t_13);
-          __Pyx_XGIVEREF(__pyx_t_25);
-          __Pyx_ExceptionReset(__pyx_t_10, __pyx_t_13, __pyx_t_25);
-          __Pyx_XGIVEREF(__pyx_t_9);
-          __Pyx_XGIVEREF(__pyx_t_12);
-          __Pyx_XGIVEREF(__pyx_t_11);
-          __Pyx_ErrRestore(__pyx_t_9, __pyx_t_12, __pyx_t_11);
-          __pyx_t_9 = 0; __pyx_t_12 = 0; __pyx_t_11 = 0; __pyx_t_10 = 0; __pyx_t_13 = 0; __pyx_t_25 = 0;
-          __pyx_lineno = __pyx_t_17; __pyx_clineno = __pyx_t_23; __pyx_filename = __pyx_t_24;
-          goto __pyx_L5_except_error;
-        }
-        __pyx_L29:;
-      }
+      __Pyx_INCREF(__pyx_v_exc_value);
+      __pyx_v_e = __pyx_v_exc_value;
       __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
       __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
-      __Pyx_XDECREF(__pyx_t_16); __pyx_t_16 = 0;
+      __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
       goto __pyx_L4_exception_handled;
     }
     goto __pyx_L5_except_error;
 
-    /* "ChronicleLogger.pyx":291
+    /* "ChronicleLogger.pyx":344
  *         log_path = os.path.join(self.__logdir__, filename)
  *         archive_path = log_path + ".tar.gz"
  *         try:             # <<<<<<<<<<<<<<
@@ -10602,8 +11303,51 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_36_archive_log(CYT
     __pyx_L8_try_end:;
   }
 
-  /* "ChronicleLogger.pyx":288
- *             print(f"Error during archive: {e}", file=sys.stderr)
+  /* "ChronicleLogger.pyx":355
+ *             e = exc_value  # Access e in both Py2 and Py3
+ *             # NEW: Replaced f-string with .format()
+ *         print("Error archiving {0}: {1}".format(filename, e), file=sys.stderr)             # <<<<<<<<<<<<<<
+ * 
+ *     def remove_old_logs(self):
+*/
+  __pyx_t_2 = NULL;
+  __Pyx_INCREF(__pyx_builtin_print);
+  __pyx_t_1 = __pyx_builtin_print; 
+  __pyx_t_18 = __pyx_mstate_global->__pyx_kp_u_Error_archiving_0_1;
+  __Pyx_INCREF(__pyx_t_18);
+  if (unlikely(!__pyx_v_e)) { __Pyx_RaiseUnboundLocalError("e"); __PYX_ERR(0, 355, __pyx_L1_error) }
+  __pyx_t_5 = 0;
+  {
+    PyObject *__pyx_callargs[3] = {__pyx_t_18, __pyx_v_filename, __pyx_v_e};
+    __pyx_t_4 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_format, __pyx_callargs+__pyx_t_5, (3-__pyx_t_5) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+    __Pyx_XDECREF(__pyx_t_18); __pyx_t_18 = 0;
+    if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 355, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_4);
+  }
+  __Pyx_GetModuleGlobalName(__pyx_t_18, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_18)) __PYX_ERR(0, 355, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_18);
+  __pyx_t_16 = __Pyx_PyObject_GetAttrStr(__pyx_t_18, __pyx_mstate_global->__pyx_n_u_stderr); if (unlikely(!__pyx_t_16)) __PYX_ERR(0, 355, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_16);
+  __Pyx_DECREF(__pyx_t_18); __pyx_t_18 = 0;
+  __pyx_t_5 = 1;
+  {
+    PyObject *__pyx_callargs[2 + ((CYTHON_VECTORCALL) ? 1 : 0)] = {__pyx_t_2, __pyx_t_4};
+    __pyx_t_18 = __Pyx_MakeVectorcallBuilderKwds(1); if (unlikely(!__pyx_t_18)) __PYX_ERR(0, 355, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_18);
+    if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_file, __pyx_t_16, __pyx_t_18, __pyx_callargs+2, 0) < 0) __PYX_ERR(0, 355, __pyx_L1_error)
+    __pyx_t_3 = __Pyx_Object_Vectorcall_CallFromBuilder(__pyx_t_1, __pyx_callargs+__pyx_t_5, (2-__pyx_t_5) | (__pyx_t_5*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET), __pyx_t_18);
+    __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
+    __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+    __Pyx_DECREF(__pyx_t_16); __pyx_t_16 = 0;
+    __Pyx_DECREF(__pyx_t_18); __pyx_t_18 = 0;
+    __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 355, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+  }
+  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+
+  /* "ChronicleLogger.pyx":341
+ * 
  * 
  *     def _archive_log(self, filename):             # <<<<<<<<<<<<<<
  *         log_path = os.path.join(self.__logdir__, filename)
@@ -10622,21 +11366,23 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_36_archive_log(CYT
   __Pyx_XDECREF(__pyx_t_18);
   __Pyx_XDECREF(__pyx_t_19);
   __Pyx_XDECREF(__pyx_t_20);
-  __Pyx_XDECREF(__pyx_t_22);
   __Pyx_AddTraceback("ChronicleLogger.ChronicleLogger._archive_log", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = NULL;
   __pyx_L0:;
   __Pyx_XDECREF(__pyx_v_log_path);
   __Pyx_XDECREF(__pyx_v_archive_path);
   __Pyx_XDECREF(__pyx_v_tar);
+  __Pyx_XDECREF(__pyx_v_exc_type);
+  __Pyx_XDECREF(__pyx_v_exc_value);
+  __Pyx_XDECREF(__pyx_v_exc_tb);
   __Pyx_XDECREF(__pyx_v_e);
   __Pyx_XGIVEREF(__pyx_r);
   __Pyx_RefNannyFinishContext();
   return __pyx_r;
 }
 
-/* "ChronicleLogger.pyx":299
- *             print(f"Error archiving {filename}: {e}", file=sys.stderr)
+/* "ChronicleLogger.pyx":357
+ *         print("Error archiving {0}: {1}".format(filename, e), file=sys.stderr)
  * 
  *     def remove_old_logs(self):             # <<<<<<<<<<<<<<
  *         try:
@@ -10682,32 +11428,32 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   {
     PyObject ** const __pyx_pyargnames[] = {&__pyx_mstate_global->__pyx_n_u_self,0};
     const Py_ssize_t __pyx_kwds_len = (__pyx_kwds) ? __Pyx_NumKwargs_FASTCALL(__pyx_kwds) : 0;
-    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 299, __pyx_L3_error)
+    if (unlikely(__pyx_kwds_len) < 0) __PYX_ERR(0, 357, __pyx_L3_error)
     if (__pyx_kwds_len > 0) {
       switch (__pyx_nargs) {
         case  1:
         values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 299, __pyx_L3_error)
+        if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 357, __pyx_L3_error)
         CYTHON_FALLTHROUGH;
         case  0: break;
         default: goto __pyx_L5_argtuple_error;
       }
       const Py_ssize_t kwd_pos_args = __pyx_nargs;
-      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "remove_old_logs", 0) < 0) __PYX_ERR(0, 299, __pyx_L3_error)
+      if (__Pyx_ParseKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values, kwd_pos_args, __pyx_kwds_len, "remove_old_logs", 0) < 0) __PYX_ERR(0, 357, __pyx_L3_error)
       for (Py_ssize_t i = __pyx_nargs; i < 1; i++) {
-        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("remove_old_logs", 1, 1, 1, i); __PYX_ERR(0, 299, __pyx_L3_error) }
+        if (unlikely(!values[i])) { __Pyx_RaiseArgtupleInvalid("remove_old_logs", 1, 1, 1, i); __PYX_ERR(0, 357, __pyx_L3_error) }
       }
     } else if (unlikely(__pyx_nargs != 1)) {
       goto __pyx_L5_argtuple_error;
     } else {
       values[0] = __Pyx_ArgRef_FASTCALL(__pyx_args, 0);
-      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 299, __pyx_L3_error)
+      if (!CYTHON_ASSUME_SAFE_MACROS && unlikely(!values[0])) __PYX_ERR(0, 357, __pyx_L3_error)
     }
     __pyx_v_self = values[0];
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("remove_old_logs", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 299, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("remove_old_logs", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 357, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -10732,6 +11478,9 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
   PyObject *__pyx_v_file = NULL;
   PyObject *__pyx_v_date_part = NULL;
   PyObject *__pyx_v_log_date = NULL;
+  CYTHON_UNUSED PyObject *__pyx_v_exc_type = NULL;
+  PyObject *__pyx_v_exc_value = NULL;
+  CYTHON_UNUSED PyObject *__pyx_v_exc_tb = NULL;
   PyObject *__pyx_v_e = NULL;
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
@@ -10754,18 +11503,14 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
   PyObject *__pyx_t_17 = NULL;
   PyObject *__pyx_t_18 = NULL;
   int __pyx_t_19;
-  PyObject *__pyx_t_20 = NULL;
-  int __pyx_t_21;
-  char const *__pyx_t_22;
-  PyObject *__pyx_t_23 = NULL;
-  PyObject *__pyx_t_24 = NULL;
-  PyObject *__pyx_t_25 = NULL;
+  PyObject *(*__pyx_t_20)(PyObject *);
+  PyObject *__pyx_t_21 = NULL;
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("remove_old_logs", 0);
 
-  /* "ChronicleLogger.pyx":300
+  /* "ChronicleLogger.pyx":358
  * 
  *     def remove_old_logs(self):
  *         try:             # <<<<<<<<<<<<<<
@@ -10781,7 +11526,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
     __Pyx_XGOTREF(__pyx_t_3);
     /*try:*/ {
 
-      /* "ChronicleLogger.pyx":301
+      /* "ChronicleLogger.pyx":359
  *     def remove_old_logs(self):
  *         try:
  *             for file in os.listdir(self.__logdir__):             # <<<<<<<<<<<<<<
@@ -10789,12 +11534,12 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
  *                     date_part = file.split('-')[-1].split('.')[0]
 */
       __pyx_t_5 = NULL;
-      __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 301, __pyx_L3_error)
+      __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 359, __pyx_L3_error)
       __Pyx_GOTREF(__pyx_t_6);
-      __pyx_t_7 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_listdir); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 301, __pyx_L3_error)
+      __pyx_t_7 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_listdir); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 359, __pyx_L3_error)
       __Pyx_GOTREF(__pyx_t_7);
       __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-      __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 301, __pyx_L3_error)
+      __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 359, __pyx_L3_error)
       __Pyx_GOTREF(__pyx_t_6);
       __pyx_t_8 = 1;
       #if CYTHON_UNPACK_METHODS
@@ -10814,7 +11559,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
         __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
         __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
         __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
-        if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 301, __pyx_L3_error)
+        if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 359, __pyx_L3_error)
         __Pyx_GOTREF(__pyx_t_4);
       }
       if (likely(PyList_CheckExact(__pyx_t_4)) || PyTuple_CheckExact(__pyx_t_4)) {
@@ -10822,9 +11567,9 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
         __pyx_t_9 = 0;
         __pyx_t_10 = NULL;
       } else {
-        __pyx_t_9 = -1; __pyx_t_7 = PyObject_GetIter(__pyx_t_4); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 301, __pyx_L3_error)
+        __pyx_t_9 = -1; __pyx_t_7 = PyObject_GetIter(__pyx_t_4); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 359, __pyx_L3_error)
         __Pyx_GOTREF(__pyx_t_7);
-        __pyx_t_10 = (CYTHON_COMPILING_IN_LIMITED_API) ? PyIter_Next : __Pyx_PyObject_GetIterNextFunc(__pyx_t_7); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 301, __pyx_L3_error)
+        __pyx_t_10 = (CYTHON_COMPILING_IN_LIMITED_API) ? PyIter_Next : __Pyx_PyObject_GetIterNextFunc(__pyx_t_7); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 359, __pyx_L3_error)
       }
       __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
       for (;;) {
@@ -10833,7 +11578,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
             {
               Py_ssize_t __pyx_temp = __Pyx_PyList_GET_SIZE(__pyx_t_7);
               #if !CYTHON_ASSUME_SAFE_SIZE
-              if (unlikely((__pyx_temp < 0))) __PYX_ERR(0, 301, __pyx_L3_error)
+              if (unlikely((__pyx_temp < 0))) __PYX_ERR(0, 359, __pyx_L3_error)
               #endif
               if (__pyx_t_9 >= __pyx_temp) break;
             }
@@ -10843,7 +11588,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
             {
               Py_ssize_t __pyx_temp = __Pyx_PyTuple_GET_SIZE(__pyx_t_7);
               #if !CYTHON_ASSUME_SAFE_SIZE
-              if (unlikely((__pyx_temp < 0))) __PYX_ERR(0, 301, __pyx_L3_error)
+              if (unlikely((__pyx_temp < 0))) __PYX_ERR(0, 359, __pyx_L3_error)
               #endif
               if (__pyx_t_9 >= __pyx_temp) break;
             }
@@ -10854,13 +11599,13 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
             #endif
             ++__pyx_t_9;
           }
-          if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 301, __pyx_L3_error)
+          if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 359, __pyx_L3_error)
         } else {
           __pyx_t_4 = __pyx_t_10(__pyx_t_7);
           if (unlikely(!__pyx_t_4)) {
             PyObject* exc_type = PyErr_Occurred();
             if (exc_type) {
-              if (unlikely(!__Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration))) __PYX_ERR(0, 301, __pyx_L3_error)
+              if (unlikely(!__Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration))) __PYX_ERR(0, 359, __pyx_L3_error)
               PyErr_Clear();
             }
             break;
@@ -10870,7 +11615,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
         __Pyx_XDECREF_SET(__pyx_v_file, __pyx_t_4);
         __pyx_t_4 = 0;
 
-        /* "ChronicleLogger.pyx":302
+        /* "ChronicleLogger.pyx":360
  *         try:
  *             for file in os.listdir(self.__logdir__):
  *                 if file.endswith(".log"):             # <<<<<<<<<<<<<<
@@ -10884,14 +11629,14 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
           PyObject *__pyx_callargs[2] = {__pyx_t_6, __pyx_mstate_global->__pyx_kp_u_log_2};
           __pyx_t_4 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_endswith, __pyx_callargs+__pyx_t_8, (2-__pyx_t_8) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
           __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
-          if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 302, __pyx_L3_error)
+          if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 360, __pyx_L3_error)
           __Pyx_GOTREF(__pyx_t_4);
         }
-        __pyx_t_11 = __Pyx_PyObject_IsTrue(__pyx_t_4); if (unlikely((__pyx_t_11 < 0))) __PYX_ERR(0, 302, __pyx_L3_error)
+        __pyx_t_11 = __Pyx_PyObject_IsTrue(__pyx_t_4); if (unlikely((__pyx_t_11 < 0))) __PYX_ERR(0, 360, __pyx_L3_error)
         __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
         if (__pyx_t_11) {
 
-          /* "ChronicleLogger.pyx":303
+          /* "ChronicleLogger.pyx":361
  *             for file in os.listdir(self.__logdir__):
  *                 if file.endswith(".log"):
  *                     date_part = file.split('-')[-1].split('.')[0]             # <<<<<<<<<<<<<<
@@ -10902,33 +11647,33 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
           __Pyx_INCREF(__pyx_t_12);
           __pyx_t_8 = 0;
           {
-            PyObject *__pyx_callargs[2] = {__pyx_t_12, __pyx_mstate_global->__pyx_kp_u__4};
+            PyObject *__pyx_callargs[2] = {__pyx_t_12, __pyx_mstate_global->__pyx_kp_u__3};
             __pyx_t_5 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_split, __pyx_callargs+__pyx_t_8, (2-__pyx_t_8) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
             __Pyx_XDECREF(__pyx_t_12); __pyx_t_12 = 0;
-            if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 303, __pyx_L3_error)
+            if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 361, __pyx_L3_error)
             __Pyx_GOTREF(__pyx_t_5);
           }
-          __pyx_t_12 = __Pyx_GetItemInt(__pyx_t_5, -1L, long, 1, __Pyx_PyLong_From_long, 0, 1, 1, 1); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 303, __pyx_L3_error)
+          __pyx_t_12 = __Pyx_GetItemInt(__pyx_t_5, -1L, long, 1, __Pyx_PyLong_From_long, 0, 1, 1, 1); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 361, __pyx_L3_error)
           __Pyx_GOTREF(__pyx_t_12);
           __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
           __pyx_t_6 = __pyx_t_12;
           __Pyx_INCREF(__pyx_t_6);
           __pyx_t_8 = 0;
           {
-            PyObject *__pyx_callargs[2] = {__pyx_t_6, __pyx_mstate_global->__pyx_kp_u_};
+            PyObject *__pyx_callargs[2] = {__pyx_t_6, __pyx_mstate_global->__pyx_kp_u__5};
             __pyx_t_4 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_split, __pyx_callargs+__pyx_t_8, (2-__pyx_t_8) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
             __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
             __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
-            if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 303, __pyx_L3_error)
+            if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 361, __pyx_L3_error)
             __Pyx_GOTREF(__pyx_t_4);
           }
-          __pyx_t_12 = __Pyx_GetItemInt(__pyx_t_4, 0, long, 1, __Pyx_PyLong_From_long, 0, 0, 1, 1); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 303, __pyx_L3_error)
+          __pyx_t_12 = __Pyx_GetItemInt(__pyx_t_4, 0, long, 1, __Pyx_PyLong_From_long, 0, 0, 1, 1); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 361, __pyx_L3_error)
           __Pyx_GOTREF(__pyx_t_12);
           __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
           __Pyx_XDECREF_SET(__pyx_v_date_part, __pyx_t_12);
           __pyx_t_12 = 0;
 
-          /* "ChronicleLogger.pyx":304
+          /* "ChronicleLogger.pyx":362
  *                 if file.endswith(".log"):
  *                     date_part = file.split('-')[-1].split('.')[0]
  *                     try:             # <<<<<<<<<<<<<<
@@ -10944,7 +11689,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
             __Pyx_XGOTREF(__pyx_t_15);
             /*try:*/ {
 
-              /* "ChronicleLogger.pyx":305
+              /* "ChronicleLogger.pyx":363
  *                     date_part = file.split('-')[-1].split('.')[0]
  *                     try:
  *                         log_date = datetime.strptime(date_part, '%Y%m%d')             # <<<<<<<<<<<<<<
@@ -10952,9 +11697,9 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
  *                             os.remove(os.path.join(self.__logdir__, file))
 */
               __pyx_t_4 = NULL;
-              __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_datetime); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 305, __pyx_L12_error)
+              __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_datetime); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 363, __pyx_L12_error)
               __Pyx_GOTREF(__pyx_t_6);
-              __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_strptime); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 305, __pyx_L12_error)
+              __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_strptime); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 363, __pyx_L12_error)
               __Pyx_GOTREF(__pyx_t_5);
               __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
               __pyx_t_8 = 1;
@@ -10974,13 +11719,13 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
                 __pyx_t_12 = __Pyx_PyObject_FastCall(__pyx_t_5, __pyx_callargs+__pyx_t_8, (3-__pyx_t_8) | (__pyx_t_8*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
                 __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
                 __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-                if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 305, __pyx_L12_error)
+                if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 363, __pyx_L12_error)
                 __Pyx_GOTREF(__pyx_t_12);
               }
               __Pyx_XDECREF_SET(__pyx_v_log_date, __pyx_t_12);
               __pyx_t_12 = 0;
 
-              /* "ChronicleLogger.pyx":306
+              /* "ChronicleLogger.pyx":364
  *                     try:
  *                         log_date = datetime.strptime(date_part, '%Y%m%d')
  *                         if (datetime.now() - log_date).days > self.LOG_REMOVAL_DAYS:             # <<<<<<<<<<<<<<
@@ -10988,9 +11733,9 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
  *                     except ValueError:
 */
               __pyx_t_5 = NULL;
-              __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_datetime); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 306, __pyx_L12_error)
+              __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_datetime); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 364, __pyx_L12_error)
               __Pyx_GOTREF(__pyx_t_4);
-              __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_now); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 306, __pyx_L12_error)
+              __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_now); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 364, __pyx_L12_error)
               __Pyx_GOTREF(__pyx_t_6);
               __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
               __pyx_t_8 = 1;
@@ -11010,25 +11755,25 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
                 __pyx_t_12 = __Pyx_PyObject_FastCall(__pyx_t_6, __pyx_callargs+__pyx_t_8, (1-__pyx_t_8) | (__pyx_t_8*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
                 __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
                 __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-                if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 306, __pyx_L12_error)
+                if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 364, __pyx_L12_error)
                 __Pyx_GOTREF(__pyx_t_12);
               }
-              __pyx_t_6 = PyNumber_Subtract(__pyx_t_12, __pyx_v_log_date); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 306, __pyx_L12_error)
+              __pyx_t_6 = PyNumber_Subtract(__pyx_t_12, __pyx_v_log_date); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 364, __pyx_L12_error)
               __Pyx_GOTREF(__pyx_t_6);
               __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
-              __pyx_t_12 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_days); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 306, __pyx_L12_error)
+              __pyx_t_12 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_days); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 364, __pyx_L12_error)
               __Pyx_GOTREF(__pyx_t_12);
               __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-              __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_LOG_REMOVAL_DAYS); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 306, __pyx_L12_error)
+              __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_LOG_REMOVAL_DAYS); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 364, __pyx_L12_error)
               __Pyx_GOTREF(__pyx_t_6);
-              __pyx_t_5 = PyObject_RichCompare(__pyx_t_12, __pyx_t_6, Py_GT); __Pyx_XGOTREF(__pyx_t_5); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 306, __pyx_L12_error)
+              __pyx_t_5 = PyObject_RichCompare(__pyx_t_12, __pyx_t_6, Py_GT); __Pyx_XGOTREF(__pyx_t_5); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 364, __pyx_L12_error)
               __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
               __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-              __pyx_t_11 = __Pyx_PyObject_IsTrue(__pyx_t_5); if (unlikely((__pyx_t_11 < 0))) __PYX_ERR(0, 306, __pyx_L12_error)
+              __pyx_t_11 = __Pyx_PyObject_IsTrue(__pyx_t_5); if (unlikely((__pyx_t_11 < 0))) __PYX_ERR(0, 364, __pyx_L12_error)
               __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
               if (__pyx_t_11) {
 
-                /* "ChronicleLogger.pyx":307
+                /* "ChronicleLogger.pyx":365
  *                         log_date = datetime.strptime(date_part, '%Y%m%d')
  *                         if (datetime.now() - log_date).days > self.LOG_REMOVAL_DAYS:
  *                             os.remove(os.path.join(self.__logdir__, file))             # <<<<<<<<<<<<<<
@@ -11036,19 +11781,19 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
  *                         continue
 */
                 __pyx_t_6 = NULL;
-                __Pyx_GetModuleGlobalName(__pyx_t_12, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 307, __pyx_L12_error)
+                __Pyx_GetModuleGlobalName(__pyx_t_12, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 365, __pyx_L12_error)
                 __Pyx_GOTREF(__pyx_t_12);
-                __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_12, __pyx_mstate_global->__pyx_n_u_remove); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 307, __pyx_L12_error)
+                __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_12, __pyx_mstate_global->__pyx_n_u_remove); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 365, __pyx_L12_error)
                 __Pyx_GOTREF(__pyx_t_4);
                 __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
-                __Pyx_GetModuleGlobalName(__pyx_t_17, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_17)) __PYX_ERR(0, 307, __pyx_L12_error)
+                __Pyx_GetModuleGlobalName(__pyx_t_17, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_17)) __PYX_ERR(0, 365, __pyx_L12_error)
                 __Pyx_GOTREF(__pyx_t_17);
-                __pyx_t_18 = __Pyx_PyObject_GetAttrStr(__pyx_t_17, __pyx_mstate_global->__pyx_n_u_path); if (unlikely(!__pyx_t_18)) __PYX_ERR(0, 307, __pyx_L12_error)
+                __pyx_t_18 = __Pyx_PyObject_GetAttrStr(__pyx_t_17, __pyx_mstate_global->__pyx_n_u_path); if (unlikely(!__pyx_t_18)) __PYX_ERR(0, 365, __pyx_L12_error)
                 __Pyx_GOTREF(__pyx_t_18);
                 __Pyx_DECREF(__pyx_t_17); __pyx_t_17 = 0;
                 __pyx_t_16 = __pyx_t_18;
                 __Pyx_INCREF(__pyx_t_16);
-                __pyx_t_17 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2); if (unlikely(!__pyx_t_17)) __PYX_ERR(0, 307, __pyx_L12_error)
+                __pyx_t_17 = __Pyx_PyObject_GetAttrStr(__pyx_v_self, __pyx_mstate_global->__pyx_n_u_logdir_2); if (unlikely(!__pyx_t_17)) __PYX_ERR(0, 365, __pyx_L12_error)
                 __Pyx_GOTREF(__pyx_t_17);
                 __pyx_t_8 = 0;
                 {
@@ -11057,7 +11802,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
                   __Pyx_XDECREF(__pyx_t_16); __pyx_t_16 = 0;
                   __Pyx_DECREF(__pyx_t_17); __pyx_t_17 = 0;
                   __Pyx_DECREF(__pyx_t_18); __pyx_t_18 = 0;
-                  if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 307, __pyx_L12_error)
+                  if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 365, __pyx_L12_error)
                   __Pyx_GOTREF(__pyx_t_12);
                 }
                 __pyx_t_8 = 1;
@@ -11078,12 +11823,12 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
                   __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
                   __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
                   __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-                  if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 307, __pyx_L12_error)
+                  if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 365, __pyx_L12_error)
                   __Pyx_GOTREF(__pyx_t_5);
                 }
                 __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
-                /* "ChronicleLogger.pyx":306
+                /* "ChronicleLogger.pyx":364
  *                     try:
  *                         log_date = datetime.strptime(date_part, '%Y%m%d')
  *                         if (datetime.now() - log_date).days > self.LOG_REMOVAL_DAYS:             # <<<<<<<<<<<<<<
@@ -11092,7 +11837,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
 */
               }
 
-              /* "ChronicleLogger.pyx":304
+              /* "ChronicleLogger.pyx":362
  *                 if file.endswith(".log"):
  *                     date_part = file.split('-')[-1].split('.')[0]
  *                     try:             # <<<<<<<<<<<<<<
@@ -11113,27 +11858,27 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
             __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
             __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
 
-            /* "ChronicleLogger.pyx":308
+            /* "ChronicleLogger.pyx":366
  *                         if (datetime.now() - log_date).days > self.LOG_REMOVAL_DAYS:
  *                             os.remove(os.path.join(self.__logdir__, file))
  *                     except ValueError:             # <<<<<<<<<<<<<<
  *                         continue
- *         except Exception as e:
+ *         except Exception:
 */
             __pyx_t_19 = __Pyx_PyErr_ExceptionMatches(__pyx_builtin_ValueError);
             if (__pyx_t_19) {
               __Pyx_AddTraceback("ChronicleLogger.ChronicleLogger.remove_old_logs", __pyx_clineno, __pyx_lineno, __pyx_filename);
-              if (__Pyx_GetException(&__pyx_t_5, &__pyx_t_4, &__pyx_t_12) < 0) __PYX_ERR(0, 308, __pyx_L14_except_error)
+              if (__Pyx_GetException(&__pyx_t_5, &__pyx_t_4, &__pyx_t_12) < 0) __PYX_ERR(0, 366, __pyx_L14_except_error)
               __Pyx_XGOTREF(__pyx_t_5);
               __Pyx_XGOTREF(__pyx_t_4);
               __Pyx_XGOTREF(__pyx_t_12);
 
-              /* "ChronicleLogger.pyx":309
+              /* "ChronicleLogger.pyx":367
  *                             os.remove(os.path.join(self.__logdir__, file))
  *                     except ValueError:
  *                         continue             # <<<<<<<<<<<<<<
- *         except Exception as e:
- *             print(f"Error during removal: {e}", file=sys.stderr)
+ *         except Exception:
+ *             # NEW: Cross-version exception handling with sys.exc_info() for Py2/3 compat (avoids comma/as syntax errors; binds e safely)
 */
               goto __pyx_L21_except_continue;
               __pyx_L21_except_continue:;
@@ -11144,7 +11889,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
             }
             goto __pyx_L14_except_error;
 
-            /* "ChronicleLogger.pyx":304
+            /* "ChronicleLogger.pyx":362
  *                 if file.endswith(".log"):
  *                     date_part = file.split('-')[-1].split('.')[0]
  *                     try:             # <<<<<<<<<<<<<<
@@ -11166,7 +11911,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
             __pyx_L19_try_end:;
           }
 
-          /* "ChronicleLogger.pyx":302
+          /* "ChronicleLogger.pyx":360
  *         try:
  *             for file in os.listdir(self.__logdir__):
  *                 if file.endswith(".log"):             # <<<<<<<<<<<<<<
@@ -11175,7 +11920,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
 */
         }
 
-        /* "ChronicleLogger.pyx":301
+        /* "ChronicleLogger.pyx":359
  *     def remove_old_logs(self):
  *         try:
  *             for file in os.listdir(self.__logdir__):             # <<<<<<<<<<<<<<
@@ -11186,7 +11931,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
       }
       __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
 
-      /* "ChronicleLogger.pyx":300
+      /* "ChronicleLogger.pyx":358
  * 
  *     def remove_old_logs(self):
  *         try:             # <<<<<<<<<<<<<<
@@ -11208,107 +11953,170 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
     __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
     __Pyx_XDECREF(__pyx_t_7); __pyx_t_7 = 0;
 
-    /* "ChronicleLogger.pyx":310
+    /* "ChronicleLogger.pyx":368
  *                     except ValueError:
  *                         continue
- *         except Exception as e:             # <<<<<<<<<<<<<<
- *             print(f"Error during removal: {e}", file=sys.stderr)
+ *         except Exception:             # <<<<<<<<<<<<<<
+ *             # NEW: Cross-version exception handling with sys.exc_info() for Py2/3 compat (avoids comma/as syntax errors; binds e safely)
+ *             exc_type, exc_value, exc_tb = sys.exc_info()
 */
     __pyx_t_19 = __Pyx_PyErr_ExceptionMatches(((PyObject *)(((PyTypeObject*)PyExc_Exception))));
     if (__pyx_t_19) {
       __Pyx_AddTraceback("ChronicleLogger.ChronicleLogger.remove_old_logs", __pyx_clineno, __pyx_lineno, __pyx_filename);
-      if (__Pyx_GetException(&__pyx_t_7, &__pyx_t_12, &__pyx_t_4) < 0) __PYX_ERR(0, 310, __pyx_L5_except_error)
+      if (__Pyx_GetException(&__pyx_t_7, &__pyx_t_12, &__pyx_t_4) < 0) __PYX_ERR(0, 368, __pyx_L5_except_error)
       __Pyx_XGOTREF(__pyx_t_7);
       __Pyx_XGOTREF(__pyx_t_12);
       __Pyx_XGOTREF(__pyx_t_4);
-      __Pyx_INCREF(__pyx_t_12);
-      __pyx_v_e = __pyx_t_12;
-      /*try:*/ {
 
-        /* "ChronicleLogger.pyx":311
- *                         continue
- *         except Exception as e:
- *             print(f"Error during removal: {e}", file=sys.stderr)             # <<<<<<<<<<<<<<
+      /* "ChronicleLogger.pyx":370
+ *         except Exception:
+ *             # NEW: Cross-version exception handling with sys.exc_info() for Py2/3 compat (avoids comma/as syntax errors; binds e safely)
+ *             exc_type, exc_value, exc_tb = sys.exc_info()             # <<<<<<<<<<<<<<
+ *             e = exc_value  # Access e in both Py2 and Py3
+ *             # NEW: Replaced f-string with .format()
 */
-        __pyx_t_6 = NULL;
-        __Pyx_INCREF(__pyx_builtin_print);
-        __pyx_t_18 = __pyx_builtin_print; 
-        __pyx_t_17 = __Pyx_PyObject_FormatSimple(__pyx_v_e, __pyx_mstate_global->__pyx_empty_unicode); if (unlikely(!__pyx_t_17)) __PYX_ERR(0, 311, __pyx_L29_error)
-        __Pyx_GOTREF(__pyx_t_17);
-        __pyx_t_16 = __Pyx_PyUnicode_Concat(__pyx_mstate_global->__pyx_kp_u_Error_during_removal, __pyx_t_17); if (unlikely(!__pyx_t_16)) __PYX_ERR(0, 311, __pyx_L29_error)
-        __Pyx_GOTREF(__pyx_t_16);
+      __pyx_t_6 = NULL;
+      __Pyx_GetModuleGlobalName(__pyx_t_18, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_18)) __PYX_ERR(0, 370, __pyx_L5_except_error)
+      __Pyx_GOTREF(__pyx_t_18);
+      __pyx_t_17 = __Pyx_PyObject_GetAttrStr(__pyx_t_18, __pyx_mstate_global->__pyx_n_u_exc_info); if (unlikely(!__pyx_t_17)) __PYX_ERR(0, 370, __pyx_L5_except_error)
+      __Pyx_GOTREF(__pyx_t_17);
+      __Pyx_DECREF(__pyx_t_18); __pyx_t_18 = 0;
+      __pyx_t_8 = 1;
+      #if CYTHON_UNPACK_METHODS
+      if (unlikely(PyMethod_Check(__pyx_t_17))) {
+        __pyx_t_6 = PyMethod_GET_SELF(__pyx_t_17);
+        assert(__pyx_t_6);
+        PyObject* __pyx__function = PyMethod_GET_FUNCTION(__pyx_t_17);
+        __Pyx_INCREF(__pyx_t_6);
+        __Pyx_INCREF(__pyx__function);
+        __Pyx_DECREF_SET(__pyx_t_17, __pyx__function);
+        __pyx_t_8 = 0;
+      }
+      #endif
+      {
+        PyObject *__pyx_callargs[2] = {__pyx_t_6, NULL};
+        __pyx_t_5 = __Pyx_PyObject_FastCall(__pyx_t_17, __pyx_callargs+__pyx_t_8, (1-__pyx_t_8) | (__pyx_t_8*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+        __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
         __Pyx_DECREF(__pyx_t_17); __pyx_t_17 = 0;
-        __Pyx_GetModuleGlobalName(__pyx_t_17, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_17)) __PYX_ERR(0, 311, __pyx_L29_error)
-        __Pyx_GOTREF(__pyx_t_17);
-        __pyx_t_20 = __Pyx_PyObject_GetAttrStr(__pyx_t_17, __pyx_mstate_global->__pyx_n_u_stderr); if (unlikely(!__pyx_t_20)) __PYX_ERR(0, 311, __pyx_L29_error)
-        __Pyx_GOTREF(__pyx_t_20);
-        __Pyx_DECREF(__pyx_t_17); __pyx_t_17 = 0;
-        __pyx_t_8 = 1;
-        {
-          PyObject *__pyx_callargs[2 + ((CYTHON_VECTORCALL) ? 1 : 0)] = {__pyx_t_6, __pyx_t_16};
-          __pyx_t_17 = __Pyx_MakeVectorcallBuilderKwds(1); if (unlikely(!__pyx_t_17)) __PYX_ERR(0, 311, __pyx_L29_error)
-          __Pyx_GOTREF(__pyx_t_17);
-          if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_file, __pyx_t_20, __pyx_t_17, __pyx_callargs+2, 0) < 0) __PYX_ERR(0, 311, __pyx_L29_error)
-          __pyx_t_5 = __Pyx_Object_Vectorcall_CallFromBuilder(__pyx_t_18, __pyx_callargs+__pyx_t_8, (2-__pyx_t_8) | (__pyx_t_8*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET), __pyx_t_17);
-          __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
-          __Pyx_DECREF(__pyx_t_16); __pyx_t_16 = 0;
-          __Pyx_DECREF(__pyx_t_20); __pyx_t_20 = 0;
-          __Pyx_DECREF(__pyx_t_17); __pyx_t_17 = 0;
-          __Pyx_DECREF(__pyx_t_18); __pyx_t_18 = 0;
-          if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 311, __pyx_L29_error)
-          __Pyx_GOTREF(__pyx_t_5);
+        if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 370, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_5);
+      }
+      if ((likely(PyTuple_CheckExact(__pyx_t_5))) || (PyList_CheckExact(__pyx_t_5))) {
+        PyObject* sequence = __pyx_t_5;
+        Py_ssize_t size = __Pyx_PySequence_SIZE(sequence);
+        if (unlikely(size != 3)) {
+          if (size > 3) __Pyx_RaiseTooManyValuesError(3);
+          else if (size >= 0) __Pyx_RaiseNeedMoreValuesError(size);
+          __PYX_ERR(0, 370, __pyx_L5_except_error)
         }
+        #if CYTHON_ASSUME_SAFE_MACROS && !CYTHON_AVOID_BORROWED_REFS
+        if (likely(PyTuple_CheckExact(sequence))) {
+          __pyx_t_17 = PyTuple_GET_ITEM(sequence, 0);
+          __Pyx_INCREF(__pyx_t_17);
+          __pyx_t_6 = PyTuple_GET_ITEM(sequence, 1);
+          __Pyx_INCREF(__pyx_t_6);
+          __pyx_t_18 = PyTuple_GET_ITEM(sequence, 2);
+          __Pyx_INCREF(__pyx_t_18);
+        } else {
+          __pyx_t_17 = __Pyx_PyList_GetItemRef(sequence, 0);
+          if (unlikely(!__pyx_t_17)) __PYX_ERR(0, 370, __pyx_L5_except_error)
+          __Pyx_XGOTREF(__pyx_t_17);
+          __pyx_t_6 = __Pyx_PyList_GetItemRef(sequence, 1);
+          if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 370, __pyx_L5_except_error)
+          __Pyx_XGOTREF(__pyx_t_6);
+          __pyx_t_18 = __Pyx_PyList_GetItemRef(sequence, 2);
+          if (unlikely(!__pyx_t_18)) __PYX_ERR(0, 370, __pyx_L5_except_error)
+          __Pyx_XGOTREF(__pyx_t_18);
+        }
+        #else
+        __pyx_t_17 = __Pyx_PySequence_ITEM(sequence, 0); if (unlikely(!__pyx_t_17)) __PYX_ERR(0, 370, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_17);
+        __pyx_t_6 = __Pyx_PySequence_ITEM(sequence, 1); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 370, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_6);
+        __pyx_t_18 = __Pyx_PySequence_ITEM(sequence, 2); if (unlikely(!__pyx_t_18)) __PYX_ERR(0, 370, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_18);
+        #endif
         __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
+      } else {
+        Py_ssize_t index = -1;
+        __pyx_t_16 = PyObject_GetIter(__pyx_t_5); if (unlikely(!__pyx_t_16)) __PYX_ERR(0, 370, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_16);
+        __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
+        __pyx_t_20 = (CYTHON_COMPILING_IN_LIMITED_API) ? PyIter_Next : __Pyx_PyObject_GetIterNextFunc(__pyx_t_16);
+        index = 0; __pyx_t_17 = __pyx_t_20(__pyx_t_16); if (unlikely(!__pyx_t_17)) goto __pyx_L26_unpacking_failed;
+        __Pyx_GOTREF(__pyx_t_17);
+        index = 1; __pyx_t_6 = __pyx_t_20(__pyx_t_16); if (unlikely(!__pyx_t_6)) goto __pyx_L26_unpacking_failed;
+        __Pyx_GOTREF(__pyx_t_6);
+        index = 2; __pyx_t_18 = __pyx_t_20(__pyx_t_16); if (unlikely(!__pyx_t_18)) goto __pyx_L26_unpacking_failed;
+        __Pyx_GOTREF(__pyx_t_18);
+        if (__Pyx_IternextUnpackEndCheck(__pyx_t_20(__pyx_t_16), 3) < 0) __PYX_ERR(0, 370, __pyx_L5_except_error)
+        __pyx_t_20 = NULL;
+        __Pyx_DECREF(__pyx_t_16); __pyx_t_16 = 0;
+        goto __pyx_L27_unpacking_done;
+        __pyx_L26_unpacking_failed:;
+        __Pyx_DECREF(__pyx_t_16); __pyx_t_16 = 0;
+        __pyx_t_20 = NULL;
+        if (__Pyx_IterFinish() == 0) __Pyx_RaiseNeedMoreValuesError(index);
+        __PYX_ERR(0, 370, __pyx_L5_except_error)
+        __pyx_L27_unpacking_done:;
       }
+      __pyx_v_exc_type = __pyx_t_17;
+      __pyx_t_17 = 0;
+      __pyx_v_exc_value = __pyx_t_6;
+      __pyx_t_6 = 0;
+      __pyx_v_exc_tb = __pyx_t_18;
+      __pyx_t_18 = 0;
 
-      /* "ChronicleLogger.pyx":310
- *                     except ValueError:
- *                         continue
- *         except Exception as e:             # <<<<<<<<<<<<<<
- *             print(f"Error during removal: {e}", file=sys.stderr)
+      /* "ChronicleLogger.pyx":371
+ *             # NEW: Cross-version exception handling with sys.exc_info() for Py2/3 compat (avoids comma/as syntax errors; binds e safely)
+ *             exc_type, exc_value, exc_tb = sys.exc_info()
+ *             e = exc_value  # Access e in both Py2 and Py3             # <<<<<<<<<<<<<<
+ *             # NEW: Replaced f-string with .format()
+ *             print("Error during removal: {0}".format(e), file=sys.stderr)
 */
-      /*finally:*/ {
-        /*normal exit:*/{
-          __Pyx_DECREF(__pyx_v_e); __pyx_v_e = 0;
-          goto __pyx_L30;
-        }
-        __pyx_L29_error:;
-        /*exception exit:*/{
-          __Pyx_PyThreadState_declare
-          __Pyx_PyThreadState_assign
-          __pyx_t_15 = 0; __pyx_t_14 = 0; __pyx_t_13 = 0; __pyx_t_23 = 0; __pyx_t_24 = 0; __pyx_t_25 = 0;
-          __Pyx_XDECREF(__pyx_t_16); __pyx_t_16 = 0;
-          __Pyx_XDECREF(__pyx_t_17); __pyx_t_17 = 0;
-          __Pyx_XDECREF(__pyx_t_18); __pyx_t_18 = 0;
-          __Pyx_XDECREF(__pyx_t_20); __pyx_t_20 = 0;
-          __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
-          __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
-           __Pyx_ExceptionSwap(&__pyx_t_23, &__pyx_t_24, &__pyx_t_25);
-          if ( unlikely(__Pyx_GetException(&__pyx_t_15, &__pyx_t_14, &__pyx_t_13) < 0)) __Pyx_ErrFetch(&__pyx_t_15, &__pyx_t_14, &__pyx_t_13);
-          __Pyx_XGOTREF(__pyx_t_15);
-          __Pyx_XGOTREF(__pyx_t_14);
-          __Pyx_XGOTREF(__pyx_t_13);
-          __Pyx_XGOTREF(__pyx_t_23);
-          __Pyx_XGOTREF(__pyx_t_24);
-          __Pyx_XGOTREF(__pyx_t_25);
-          __pyx_t_19 = __pyx_lineno; __pyx_t_21 = __pyx_clineno; __pyx_t_22 = __pyx_filename;
-          {
-            __Pyx_DECREF(__pyx_v_e); __pyx_v_e = 0;
-          }
-          __Pyx_XGIVEREF(__pyx_t_23);
-          __Pyx_XGIVEREF(__pyx_t_24);
-          __Pyx_XGIVEREF(__pyx_t_25);
-          __Pyx_ExceptionReset(__pyx_t_23, __pyx_t_24, __pyx_t_25);
-          __Pyx_XGIVEREF(__pyx_t_15);
-          __Pyx_XGIVEREF(__pyx_t_14);
-          __Pyx_XGIVEREF(__pyx_t_13);
-          __Pyx_ErrRestore(__pyx_t_15, __pyx_t_14, __pyx_t_13);
-          __pyx_t_15 = 0; __pyx_t_14 = 0; __pyx_t_13 = 0; __pyx_t_23 = 0; __pyx_t_24 = 0; __pyx_t_25 = 0;
-          __pyx_lineno = __pyx_t_19; __pyx_clineno = __pyx_t_21; __pyx_filename = __pyx_t_22;
-          goto __pyx_L5_except_error;
-        }
-        __pyx_L30:;
+      __Pyx_INCREF(__pyx_v_exc_value);
+      __pyx_v_e = __pyx_v_exc_value;
+
+      /* "ChronicleLogger.pyx":373
+ *             e = exc_value  # Access e in both Py2 and Py3
+ *             # NEW: Replaced f-string with .format()
+ *             print("Error during removal: {0}".format(e), file=sys.stderr)             # <<<<<<<<<<<<<<
+ * 
+*/
+      __pyx_t_18 = NULL;
+      __Pyx_INCREF(__pyx_builtin_print);
+      __pyx_t_6 = __pyx_builtin_print; 
+      __pyx_t_16 = __pyx_mstate_global->__pyx_kp_u_Error_during_removal_0;
+      __Pyx_INCREF(__pyx_t_16);
+      __pyx_t_8 = 0;
+      {
+        PyObject *__pyx_callargs[2] = {__pyx_t_16, __pyx_v_e};
+        __pyx_t_17 = __Pyx_PyObject_FastCallMethod(__pyx_mstate_global->__pyx_n_u_format, __pyx_callargs+__pyx_t_8, (2-__pyx_t_8) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+        __Pyx_XDECREF(__pyx_t_16); __pyx_t_16 = 0;
+        if (unlikely(!__pyx_t_17)) __PYX_ERR(0, 373, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_17);
       }
+      __Pyx_GetModuleGlobalName(__pyx_t_16, __pyx_mstate_global->__pyx_n_u_sys); if (unlikely(!__pyx_t_16)) __PYX_ERR(0, 373, __pyx_L5_except_error)
+      __Pyx_GOTREF(__pyx_t_16);
+      __pyx_t_21 = __Pyx_PyObject_GetAttrStr(__pyx_t_16, __pyx_mstate_global->__pyx_n_u_stderr); if (unlikely(!__pyx_t_21)) __PYX_ERR(0, 373, __pyx_L5_except_error)
+      __Pyx_GOTREF(__pyx_t_21);
+      __Pyx_DECREF(__pyx_t_16); __pyx_t_16 = 0;
+      __pyx_t_8 = 1;
+      {
+        PyObject *__pyx_callargs[2 + ((CYTHON_VECTORCALL) ? 1 : 0)] = {__pyx_t_18, __pyx_t_17};
+        __pyx_t_16 = __Pyx_MakeVectorcallBuilderKwds(1); if (unlikely(!__pyx_t_16)) __PYX_ERR(0, 373, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_16);
+        if (__Pyx_VectorcallBuilder_AddArg(__pyx_mstate_global->__pyx_n_u_file, __pyx_t_21, __pyx_t_16, __pyx_callargs+2, 0) < 0) __PYX_ERR(0, 373, __pyx_L5_except_error)
+        __pyx_t_5 = __Pyx_Object_Vectorcall_CallFromBuilder(__pyx_t_6, __pyx_callargs+__pyx_t_8, (2-__pyx_t_8) | (__pyx_t_8*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET), __pyx_t_16);
+        __Pyx_XDECREF(__pyx_t_18); __pyx_t_18 = 0;
+        __Pyx_DECREF(__pyx_t_17); __pyx_t_17 = 0;
+        __Pyx_DECREF(__pyx_t_21); __pyx_t_21 = 0;
+        __Pyx_DECREF(__pyx_t_16); __pyx_t_16 = 0;
+        __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+        if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 373, __pyx_L5_except_error)
+        __Pyx_GOTREF(__pyx_t_5);
+      }
+      __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
       __Pyx_XDECREF(__pyx_t_7); __pyx_t_7 = 0;
       __Pyx_XDECREF(__pyx_t_12); __pyx_t_12 = 0;
       __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
@@ -11316,7 +12124,7 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
     }
     goto __pyx_L5_except_error;
 
-    /* "ChronicleLogger.pyx":300
+    /* "ChronicleLogger.pyx":358
  * 
  *     def remove_old_logs(self):
  *         try:             # <<<<<<<<<<<<<<
@@ -11337,8 +12145,8 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
     __pyx_L8_try_end:;
   }
 
-  /* "ChronicleLogger.pyx":299
- *             print(f"Error archiving {filename}: {e}", file=sys.stderr)
+  /* "ChronicleLogger.pyx":357
+ *         print("Error archiving {0}: {1}".format(filename, e), file=sys.stderr)
  * 
  *     def remove_old_logs(self):             # <<<<<<<<<<<<<<
  *         try:
@@ -11357,13 +12165,16 @@ static PyObject *__pyx_pf_15ChronicleLogger_15ChronicleLogger_38remove_old_logs(
   __Pyx_XDECREF(__pyx_t_16);
   __Pyx_XDECREF(__pyx_t_17);
   __Pyx_XDECREF(__pyx_t_18);
-  __Pyx_XDECREF(__pyx_t_20);
+  __Pyx_XDECREF(__pyx_t_21);
   __Pyx_AddTraceback("ChronicleLogger.ChronicleLogger.remove_old_logs", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = NULL;
   __pyx_L0:;
   __Pyx_XDECREF(__pyx_v_file);
   __Pyx_XDECREF(__pyx_v_date_part);
   __Pyx_XDECREF(__pyx_v_log_date);
+  __Pyx_XDECREF(__pyx_v_exc_type);
+  __Pyx_XDECREF(__pyx_v_exc_value);
+  __Pyx_XDECREF(__pyx_v_exc_tb);
   __Pyx_XDECREF(__pyx_v_e);
   __Pyx_XGIVEREF(__pyx_r);
   __Pyx_RefNannyFinishContext();
@@ -11629,14 +12440,15 @@ static CYTHON_SMALL_CODE int __pyx_pymod_exec_ChronicleLogger(PyObject *__pyx_py
   PyObject *__pyx_t_1 = NULL;
   PyObject *__pyx_t_2 = NULL;
   PyObject *__pyx_t_3 = NULL;
-  PyObject *__pyx_t_4 = NULL;
-  PyObject *__pyx_t_5 = NULL;
+  int __pyx_t_4;
+  int __pyx_t_5;
   PyObject *__pyx_t_6 = NULL;
-  size_t __pyx_t_7;
+  PyObject *__pyx_t_7 = NULL;
   PyObject *__pyx_t_8 = NULL;
-  PyObject *__pyx_t_9 = NULL;
+  size_t __pyx_t_9;
   PyObject *__pyx_t_10 = NULL;
-  int __pyx_t_11;
+  PyObject *__pyx_t_11 = NULL;
+  int __pyx_t_12;
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
@@ -11747,8 +12559,8 @@ __Pyx_RefNannySetupContext("PyInit_ChronicleLogger", 0);
  * 
  * # === EXTERNAL & STANDARD LIBRARY IMPORTS ===
  * import os             # <<<<<<<<<<<<<<
- * from subprocess import Popen, DEVNULL
- * import sys
+ * import subprocess
+ * from subprocess import Popen
 */
   __pyx_t_2 = __Pyx_ImportDottedModule(__pyx_mstate_global->__pyx_n_u_os, NULL); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 5, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
@@ -11758,284 +12570,347 @@ __Pyx_RefNannySetupContext("PyInit_ChronicleLogger", 0);
   /* "ChronicleLogger.pyx":6
  * # === EXTERNAL & STANDARD LIBRARY IMPORTS ===
  * import os
- * from subprocess import Popen, DEVNULL             # <<<<<<<<<<<<<<
+ * import subprocess             # <<<<<<<<<<<<<<
+ * from subprocess import Popen
  * import sys
- * import ctypes
 */
-  __pyx_t_2 = __Pyx_PyList_Pack(2, __pyx_mstate_global->__pyx_n_u_Popen, __pyx_mstate_global->__pyx_n_u_DEVNULL); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 6, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_ImportDottedModule(__pyx_mstate_global->__pyx_n_u_subprocess, NULL); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 6, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  __pyx_t_3 = __Pyx_Import(__pyx_mstate_global->__pyx_n_u_subprocess, __pyx_t_2, 0); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 6, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
+  if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_subprocess, __pyx_t_2) < 0) __PYX_ERR(0, 6, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __pyx_t_2 = __Pyx_ImportFrom(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_Popen); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 6, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_Popen, __pyx_t_2) < 0) __PYX_ERR(0, 6, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __pyx_t_2 = __Pyx_ImportFrom(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_DEVNULL); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 6, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_DEVNULL, __pyx_t_2) < 0) __PYX_ERR(0, 6, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
   /* "ChronicleLogger.pyx":7
  * import os
- * from subprocess import Popen, DEVNULL
+ * import subprocess
+ * from subprocess import Popen             # <<<<<<<<<<<<<<
+ * import sys
+ * import ctypes
+*/
+  __pyx_t_2 = __Pyx_PyList_Pack(1, __pyx_mstate_global->__pyx_n_u_Popen); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 7, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  __pyx_t_3 = __Pyx_Import(__pyx_mstate_global->__pyx_n_u_subprocess, __pyx_t_2, 0); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 7, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+  __pyx_t_2 = __Pyx_ImportFrom(__pyx_t_3, __pyx_mstate_global->__pyx_n_u_Popen); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 7, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_Popen, __pyx_t_2) < 0) __PYX_ERR(0, 7, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+
+  /* "ChronicleLogger.pyx":8
+ * import subprocess
+ * from subprocess import Popen
  * import sys             # <<<<<<<<<<<<<<
  * import ctypes
  * import tarfile
 */
-  __pyx_t_3 = __Pyx_ImportDottedModule(__pyx_mstate_global->__pyx_n_u_sys, NULL); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 7, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportDottedModule(__pyx_mstate_global->__pyx_n_u_sys, NULL); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 8, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_sys, __pyx_t_3) < 0) __PYX_ERR(0, 7, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_sys, __pyx_t_3) < 0) __PYX_ERR(0, 8, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":8
- * from subprocess import Popen, DEVNULL
+  /* "ChronicleLogger.pyx":9
+ * from subprocess import Popen
  * import sys
  * import ctypes             # <<<<<<<<<<<<<<
  * import tarfile
  * import re
 */
-  __pyx_t_3 = __Pyx_ImportDottedModule(__pyx_mstate_global->__pyx_n_u_ctypes, NULL); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 8, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportDottedModule(__pyx_mstate_global->__pyx_n_u_ctypes, NULL); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 9, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_ctypes, __pyx_t_3) < 0) __PYX_ERR(0, 8, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_ctypes, __pyx_t_3) < 0) __PYX_ERR(0, 9, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":9
+  /* "ChronicleLogger.pyx":10
  * import sys
  * import ctypes
  * import tarfile             # <<<<<<<<<<<<<<
  * import re
  * from datetime import datetime
 */
-  __pyx_t_3 = __Pyx_ImportDottedModule(__pyx_mstate_global->__pyx_n_u_tarfile, NULL); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 9, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportDottedModule(__pyx_mstate_global->__pyx_n_u_tarfile, NULL); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 10, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_tarfile, __pyx_t_3) < 0) __PYX_ERR(0, 9, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_tarfile, __pyx_t_3) < 0) __PYX_ERR(0, 10, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":10
+  /* "ChronicleLogger.pyx":11
  * import ctypes
  * import tarfile
  * import re             # <<<<<<<<<<<<<<
  * from datetime import datetime
  * 
 */
-  __pyx_t_3 = __Pyx_ImportDottedModule(__pyx_mstate_global->__pyx_n_u_re, NULL); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 10, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportDottedModule(__pyx_mstate_global->__pyx_n_u_re, NULL); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 11, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_re, __pyx_t_3) < 0) __PYX_ERR(0, 10, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_re, __pyx_t_3) < 0) __PYX_ERR(0, 11, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":11
+  /* "ChronicleLogger.pyx":12
  * import tarfile
  * import re
  * from datetime import datetime             # <<<<<<<<<<<<<<
  * 
- * # === Suroot.py ===
+ * # Python 2.7 compatibility shim
 */
-  __pyx_t_3 = __Pyx_PyList_Pack(1, __pyx_mstate_global->__pyx_n_u_datetime); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 11, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_PyList_Pack(1, __pyx_mstate_global->__pyx_n_u_datetime); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 12, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_2 = __Pyx_Import(__pyx_mstate_global->__pyx_n_u_datetime, __pyx_t_3, 0); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 11, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_Import(__pyx_mstate_global->__pyx_n_u_datetime, __pyx_t_3, 0); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 12, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_datetime); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 11, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_datetime); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 12, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_datetime, __pyx_t_3) < 0) __PYX_ERR(0, 11, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_datetime, __pyx_t_3) < 0) __PYX_ERR(0, 12, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
+  /* "ChronicleLogger.pyx":15
+ * 
+ * # Python 2.7 compatibility shim
+ * if not hasattr(subprocess, 'DEVNULL'):             # <<<<<<<<<<<<<<
+ *     DEVNULL = open(os.devnull, 'wb')
+ * else:
+*/
+  __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_subprocess); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 15, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  __pyx_t_4 = __Pyx_HasAttr(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_DEVNULL); if (unlikely(__pyx_t_4 == ((int)-1))) __PYX_ERR(0, 15, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+  __pyx_t_5 = (!__pyx_t_4);
+  if (__pyx_t_5) {
+
+    /* "ChronicleLogger.pyx":16
+ * # Python 2.7 compatibility shim
+ * if not hasattr(subprocess, 'DEVNULL'):
+ *     DEVNULL = open(os.devnull, 'wb')             # <<<<<<<<<<<<<<
+ * else:
+ *     DEVNULL = subprocess.DEVNULL
+*/
+    __pyx_t_3 = NULL;
+    __Pyx_INCREF(__pyx_builtin_open);
+    __pyx_t_6 = __pyx_builtin_open; 
+    __Pyx_GetModuleGlobalName(__pyx_t_7, __pyx_mstate_global->__pyx_n_u_os); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 16, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_7);
+    __pyx_t_8 = __Pyx_PyObject_GetAttrStr(__pyx_t_7, __pyx_mstate_global->__pyx_n_u_devnull); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 16, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_8);
+    __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+    __pyx_t_9 = 1;
+    {
+      PyObject *__pyx_callargs[3] = {__pyx_t_3, __pyx_t_8, __pyx_mstate_global->__pyx_n_u_wb};
+      __pyx_t_2 = __Pyx_PyObject_FastCall(__pyx_t_6, __pyx_callargs+__pyx_t_9, (3-__pyx_t_9) | (__pyx_t_9*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+      __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
+      __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
+      __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+      if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 16, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_2);
+    }
+    if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_DEVNULL, __pyx_t_2) < 0) __PYX_ERR(0, 16, __pyx_L1_error)
+    __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+
+    /* "ChronicleLogger.pyx":15
+ * 
+ * # Python 2.7 compatibility shim
+ * if not hasattr(subprocess, 'DEVNULL'):             # <<<<<<<<<<<<<<
+ *     DEVNULL = open(os.devnull, 'wb')
+ * else:
+*/
+    goto __pyx_L2;
+  }
+
   /* "ChronicleLogger.pyx":18
- * # ONLY for internal use by ChronicleLogger
+ *     DEVNULL = open(os.devnull, 'wb')
+ * else:
+ *     DEVNULL = subprocess.DEVNULL             # <<<<<<<<<<<<<<
+ * 
+ * class _Suroot:
+*/
+  /*else*/ {
+    __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_subprocess); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 18, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_2);
+    __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_DEVNULL); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 18, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_6);
+    __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+    if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_DEVNULL, __pyx_t_6) < 0) __PYX_ERR(0, 18, __pyx_L1_error)
+    __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+  }
+  __pyx_L2:;
+
+  /* "ChronicleLogger.pyx":20
+ *     DEVNULL = subprocess.DEVNULL
  * 
  * class _Suroot:             # <<<<<<<<<<<<<<
  *     """
  *     Tiny, zero-dependency, non-interactive privilege detector.
 */
-  __pyx_t_2 = __Pyx_Py3MetaclassPrepare((PyObject *) NULL, __pyx_mstate_global->__pyx_empty_tuple, __pyx_mstate_global->__pyx_n_u_Suroot, __pyx_mstate_global->__pyx_n_u_Suroot, (PyObject *) NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_kp_u_Tiny_zero_dependency_non_intera); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 18, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_2);
+  __pyx_t_6 = __Pyx_Py3MetaclassPrepare((PyObject *) NULL, __pyx_mstate_global->__pyx_empty_tuple, __pyx_mstate_global->__pyx_n_u_Suroot, __pyx_mstate_global->__pyx_n_u_Suroot, (PyObject *) NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_kp_u_Tiny_zero_dependency_non_intera); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 20, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_6);
 
-  /* "ChronicleLogger.pyx":25
+  /* "ChronicleLogger.pyx":27
  *     """
  * 
  *     CLASSNAME = "Suroot"             # <<<<<<<<<<<<<<
  *     MAJOR_VERSION = 0
  *     MINOR_VERSION = 1
 */
-  if (__Pyx_SetNameInClass(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_CLASSNAME, __pyx_mstate_global->__pyx_n_u_Suroot_2) < 0) __PYX_ERR(0, 25, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_CLASSNAME, __pyx_mstate_global->__pyx_n_u_Suroot_2) < 0) __PYX_ERR(0, 27, __pyx_L1_error)
 
-  /* "ChronicleLogger.pyx":26
+  /* "ChronicleLogger.pyx":28
  * 
  *     CLASSNAME = "Suroot"
  *     MAJOR_VERSION = 0             # <<<<<<<<<<<<<<
  *     MINOR_VERSION = 1
- *     PATCH_VERSION = 0
+ *     PATCH_VERSION = 1
 */
-  if (__Pyx_SetNameInClass(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_MAJOR_VERSION, __pyx_mstate_global->__pyx_int_0) < 0) __PYX_ERR(0, 26, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_MAJOR_VERSION, __pyx_mstate_global->__pyx_int_0) < 0) __PYX_ERR(0, 28, __pyx_L1_error)
 
-  /* "ChronicleLogger.pyx":27
+  /* "ChronicleLogger.pyx":29
  *     CLASSNAME = "Suroot"
  *     MAJOR_VERSION = 0
  *     MINOR_VERSION = 1             # <<<<<<<<<<<<<<
- *     PATCH_VERSION = 0
+ *     PATCH_VERSION = 1
  * 
 */
-  if (__Pyx_SetNameInClass(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_MINOR_VERSION, __pyx_mstate_global->__pyx_int_1) < 0) __PYX_ERR(0, 27, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_MINOR_VERSION, __pyx_mstate_global->__pyx_int_1) < 0) __PYX_ERR(0, 29, __pyx_L1_error)
 
-  /* "ChronicleLogger.pyx":28
+  /* "ChronicleLogger.pyx":30
  *     MAJOR_VERSION = 0
  *     MINOR_VERSION = 1
- *     PATCH_VERSION = 0             # <<<<<<<<<<<<<<
+ *     PATCH_VERSION = 1             # <<<<<<<<<<<<<<
  * 
  *     _is_root = None
 */
-  if (__Pyx_SetNameInClass(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_PATCH_VERSION, __pyx_mstate_global->__pyx_int_0) < 0) __PYX_ERR(0, 28, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_PATCH_VERSION, __pyx_mstate_global->__pyx_int_1) < 0) __PYX_ERR(0, 30, __pyx_L1_error)
 
-  /* "ChronicleLogger.pyx":30
- *     PATCH_VERSION = 0
+  /* "ChronicleLogger.pyx":32
+ *     PATCH_VERSION = 1
  * 
  *     _is_root = None             # <<<<<<<<<<<<<<
  *     _can_sudo_nopasswd = None
  * 
 */
-  if (__Pyx_SetNameInClass(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_is_root, Py_None) < 0) __PYX_ERR(0, 30, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_is_root, Py_None) < 0) __PYX_ERR(0, 32, __pyx_L1_error)
 
-  /* "ChronicleLogger.pyx":31
+  /* "ChronicleLogger.pyx":33
  * 
  *     _is_root = None
  *     _can_sudo_nopasswd = None             # <<<<<<<<<<<<<<
  * 
  *     @staticmethod
 */
-  if (__Pyx_SetNameInClass(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_can_sudo_nopasswd, Py_None) < 0) __PYX_ERR(0, 31, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_can_sudo_nopasswd, Py_None) < 0) __PYX_ERR(0, 33, __pyx_L1_error)
 
-  /* "ChronicleLogger.pyx":33
+  /* "ChronicleLogger.pyx":35
  *     _can_sudo_nopasswd = None
  * 
  *     @staticmethod             # <<<<<<<<<<<<<<
  *     def class_version():
  *         """Return the class name and version string."""
 */
-  __pyx_t_4 = NULL;
+  __pyx_t_8 = NULL;
   __Pyx_INCREF(__pyx_builtin_staticmethod);
-  __pyx_t_5 = __pyx_builtin_staticmethod; 
-  __pyx_t_6 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_7_Suroot_1class_version, __Pyx_CYFUNCTION_STATICMETHOD, __pyx_mstate_global->__pyx_n_u_Suroot_class_version, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[0])); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 33, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_6);
-  __pyx_t_7 = 1;
+  __pyx_t_3 = __pyx_builtin_staticmethod; 
+  __pyx_t_7 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_7_Suroot_1class_version, __Pyx_CYFUNCTION_STATICMETHOD, __pyx_mstate_global->__pyx_n_u_Suroot_class_version, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[0])); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 35, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_7);
+  __pyx_t_9 = 1;
   {
-    PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_t_6};
-    __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_5, __pyx_callargs+__pyx_t_7, (2-__pyx_t_7) | (__pyx_t_7*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
-    __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-    __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-    __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 33, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_3);
+    PyObject *__pyx_callargs[2] = {__pyx_t_8, __pyx_t_7};
+    __pyx_t_2 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+__pyx_t_9, (2-__pyx_t_9) | (__pyx_t_9*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+    __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
+    __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+    if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 35, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_2);
   }
-  if (__Pyx_SetNameInClass(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_class_version, __pyx_t_3) < 0) __PYX_ERR(0, 33, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_class_version, __pyx_t_2) < 0) __PYX_ERR(0, 35, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "ChronicleLogger.pyx":38
- *         return f"{_Suroot.CLASSNAME} v{_Suroot.MAJOR_VERSION}.{_Suroot.MINOR_VERSION}.{_Suroot.PATCH_VERSION}"
+  /* "ChronicleLogger.pyx":41
+ *         return "{0.CLASSNAME} v{0.MAJOR_VERSION}.{0.MINOR_VERSION}.{0.PATCH_VERSION}".format(_Suroot)
  * 
  *     @staticmethod             # <<<<<<<<<<<<<<
- *     def is_root() -> bool:
+ *     def is_root():  # NEW: Removed -> bool type hint (Py3.5+ syntax error in Py2)
  *         """Are we currently running as root (euid == 0)?"""
 */
-  __pyx_t_5 = NULL;
+  __pyx_t_3 = NULL;
   __Pyx_INCREF(__pyx_builtin_staticmethod);
-  __pyx_t_6 = __pyx_builtin_staticmethod; 
-  __pyx_t_4 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 38, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_4);
-  if (PyDict_SetItem(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_return, __pyx_mstate_global->__pyx_n_u_bool) < 0) __PYX_ERR(0, 38, __pyx_L1_error)
-  __pyx_t_8 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_7_Suroot_3is_root, __Pyx_CYFUNCTION_STATICMETHOD, __pyx_mstate_global->__pyx_n_u_Suroot_is_root, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[1])); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 38, __pyx_L1_error)
+  __pyx_t_7 = __pyx_builtin_staticmethod; 
+  __pyx_t_8 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_7_Suroot_3is_root, __Pyx_CYFUNCTION_STATICMETHOD, __pyx_mstate_global->__pyx_n_u_Suroot_is_root, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[1])); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 41, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_8);
-  __Pyx_CyFunction_SetAnnotationsDict(__pyx_t_8, __pyx_t_4);
-  __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-  __pyx_t_7 = 1;
+  __pyx_t_9 = 1;
   {
-    PyObject *__pyx_callargs[2] = {__pyx_t_5, __pyx_t_8};
-    __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_6, __pyx_callargs+__pyx_t_7, (2-__pyx_t_7) | (__pyx_t_7*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
-    __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
+    PyObject *__pyx_callargs[2] = {__pyx_t_3, __pyx_t_8};
+    __pyx_t_2 = __Pyx_PyObject_FastCall(__pyx_t_7, __pyx_callargs+__pyx_t_9, (2-__pyx_t_9) | (__pyx_t_9*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+    __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
     __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
-    __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 38, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_3);
+    __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+    if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 41, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_2);
   }
-  if (__Pyx_SetNameInClass(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_is_root_2, __pyx_t_3) < 0) __PYX_ERR(0, 38, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_is_root_2, __pyx_t_2) < 0) __PYX_ERR(0, 41, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "ChronicleLogger.pyx":45
+  /* "ChronicleLogger.pyx":48
  *         return _Suroot._is_root
  * 
  *     @staticmethod             # <<<<<<<<<<<<<<
- *     def can_sudo_without_password() -> bool:
+ *     def can_sudo_without_password():  # NEW: Removed -> bool type hint
  *         """Can we run 'sudo' commands without being asked for a password?"""
 */
-  __pyx_t_6 = NULL;
+  __pyx_t_7 = NULL;
   __Pyx_INCREF(__pyx_builtin_staticmethod);
   __pyx_t_8 = __pyx_builtin_staticmethod; 
-  __pyx_t_5 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 45, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_5);
-  if (PyDict_SetItem(__pyx_t_5, __pyx_mstate_global->__pyx_n_u_return, __pyx_mstate_global->__pyx_n_u_bool) < 0) __PYX_ERR(0, 45, __pyx_L1_error)
-  __pyx_t_4 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_7_Suroot_5can_sudo_without_password, __Pyx_CYFUNCTION_STATICMETHOD, __pyx_mstate_global->__pyx_n_u_Suroot_can_sudo_without_passwor, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[2])); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 45, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_4);
-  __Pyx_CyFunction_SetAnnotationsDict(__pyx_t_4, __pyx_t_5);
-  __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-  __pyx_t_7 = 1;
+  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_7_Suroot_5can_sudo_without_password, __Pyx_CYFUNCTION_STATICMETHOD, __pyx_mstate_global->__pyx_n_u_Suroot_can_sudo_without_passwor, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[2])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 48, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
+  __pyx_t_9 = 1;
   {
-    PyObject *__pyx_callargs[2] = {__pyx_t_6, __pyx_t_4};
-    __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_8, __pyx_callargs+__pyx_t_7, (2-__pyx_t_7) | (__pyx_t_7*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
-    __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
-    __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+    PyObject *__pyx_callargs[2] = {__pyx_t_7, __pyx_t_3};
+    __pyx_t_2 = __Pyx_PyObject_FastCall(__pyx_t_8, __pyx_callargs+__pyx_t_9, (2-__pyx_t_9) | (__pyx_t_9*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+    __Pyx_XDECREF(__pyx_t_7); __pyx_t_7 = 0;
+    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
     __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
-    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 45, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_3);
+    if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 48, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_2);
   }
-  if (__Pyx_SetNameInClass(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_can_sudo_without_password, __pyx_t_3) < 0) __PYX_ERR(0, 45, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_can_sudo_without_password, __pyx_t_2) < 0) __PYX_ERR(0, 48, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "ChronicleLogger.pyx":69
+  /* "ChronicleLogger.pyx":76
  *         return _Suroot._can_sudo_nopasswd
  * 
  *     @staticmethod             # <<<<<<<<<<<<<<
- *     def should_use_system_paths() -> bool:
+ *     def should_use_system_paths():  # NEW: Removed -> bool type hint
  *         """
 */
   __pyx_t_8 = NULL;
   __Pyx_INCREF(__pyx_builtin_staticmethod);
-  __pyx_t_4 = __pyx_builtin_staticmethod; 
-  __pyx_t_6 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 69, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_6);
-  if (PyDict_SetItem(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_return, __pyx_mstate_global->__pyx_n_u_bool) < 0) __PYX_ERR(0, 69, __pyx_L1_error)
-  __pyx_t_5 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_7_Suroot_7should_use_system_paths, __Pyx_CYFUNCTION_STATICMETHOD, __pyx_mstate_global->__pyx_n_u_Suroot_should_use_system_paths, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[3])); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 69, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_5);
-  __Pyx_CyFunction_SetAnnotationsDict(__pyx_t_5, __pyx_t_6);
-  __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-  __pyx_t_7 = 1;
+  __pyx_t_3 = __pyx_builtin_staticmethod; 
+  __pyx_t_7 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_7_Suroot_7should_use_system_paths, __Pyx_CYFUNCTION_STATICMETHOD, __pyx_mstate_global->__pyx_n_u_Suroot_should_use_system_paths, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[3])); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 76, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_7);
+  __pyx_t_9 = 1;
   {
-    PyObject *__pyx_callargs[2] = {__pyx_t_8, __pyx_t_5};
-    __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+__pyx_t_7, (2-__pyx_t_7) | (__pyx_t_7*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+    PyObject *__pyx_callargs[2] = {__pyx_t_8, __pyx_t_7};
+    __pyx_t_2 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+__pyx_t_9, (2-__pyx_t_9) | (__pyx_t_9*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
     __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
-    __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-    __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 69, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_3);
+    __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+    if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 76, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_2);
   }
-  if (__Pyx_SetNameInClass(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_should_use_system_paths, __pyx_t_3) < 0) __PYX_ERR(0, 69, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_should_use_system_paths, __pyx_t_2) < 0) __PYX_ERR(0, 76, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "ChronicleLogger.pyx":18
- * # ONLY for internal use by ChronicleLogger
+  /* "ChronicleLogger.pyx":20
+ *     DEVNULL = subprocess.DEVNULL
  * 
  * class _Suroot:             # <<<<<<<<<<<<<<
  *     """
  *     Tiny, zero-dependency, non-interactive privilege detector.
 */
-  __pyx_t_3 = __Pyx_Py3ClassCreate(((PyObject*)&PyType_Type), __pyx_mstate_global->__pyx_n_u_Suroot, __pyx_mstate_global->__pyx_empty_tuple, __pyx_t_2, NULL, 0, 0); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 18, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_Suroot, __pyx_t_3) < 0) __PYX_ERR(0, 18, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  __pyx_t_2 = __Pyx_Py3ClassCreate(((PyObject*)&PyType_Type), __pyx_mstate_global->__pyx_n_u_Suroot, __pyx_mstate_global->__pyx_empty_tuple, __pyx_t_6, NULL, 0, 0); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 20, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_Suroot, __pyx_t_2) < 0) __PYX_ERR(0, 20, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+  __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
 
-  /* "ChronicleLogger.pyx":83
+  /* "ChronicleLogger.pyx":91
  * # Correct import for your actual file: Suroot.py (capital S)
  * 
  * try:             # <<<<<<<<<<<<<<
@@ -12045,24 +12920,24 @@ __Pyx_RefNannySetupContext("PyInit_ChronicleLogger", 0);
   {
     __Pyx_PyThreadState_declare
     __Pyx_PyThreadState_assign
-    __Pyx_ExceptionSave(&__pyx_t_1, &__pyx_t_9, &__pyx_t_10);
+    __Pyx_ExceptionSave(&__pyx_t_1, &__pyx_t_10, &__pyx_t_11);
     __Pyx_XGOTREF(__pyx_t_1);
-    __Pyx_XGOTREF(__pyx_t_9);
     __Pyx_XGOTREF(__pyx_t_10);
+    __Pyx_XGOTREF(__pyx_t_11);
     /*try:*/ {
 
-      /* "ChronicleLogger.pyx":84
+      /* "ChronicleLogger.pyx":92
  * 
  * try:
  *     basestring             # <<<<<<<<<<<<<<
  * except NameError:
  *     basestring = str
 */
-      __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_basestring); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 84, __pyx_L2_error)
-      __Pyx_GOTREF(__pyx_t_2);
-      __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+      __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_basestring); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 92, __pyx_L3_error)
+      __Pyx_GOTREF(__pyx_t_6);
+      __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
 
-      /* "ChronicleLogger.pyx":83
+      /* "ChronicleLogger.pyx":91
  * # Correct import for your actual file: Suroot.py (capital S)
  * 
  * try:             # <<<<<<<<<<<<<<
@@ -12071,414 +12946,517 @@ __Pyx_RefNannySetupContext("PyInit_ChronicleLogger", 0);
 */
     }
     __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
-    __Pyx_XDECREF(__pyx_t_9); __pyx_t_9 = 0;
     __Pyx_XDECREF(__pyx_t_10); __pyx_t_10 = 0;
-    goto __pyx_L7_try_end;
-    __pyx_L2_error:;
+    __Pyx_XDECREF(__pyx_t_11); __pyx_t_11 = 0;
+    goto __pyx_L8_try_end;
+    __pyx_L3_error:;
     __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
     __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
-    __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-    __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
     __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
+    __Pyx_XDECREF(__pyx_t_7); __pyx_t_7 = 0;
     __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
 
-    /* "ChronicleLogger.pyx":85
+    /* "ChronicleLogger.pyx":93
  * try:
  *     basestring
  * except NameError:             # <<<<<<<<<<<<<<
  *     basestring = str
  * 
 */
-    __pyx_t_11 = __Pyx_PyErr_ExceptionMatches(__pyx_builtin_NameError);
-    if (__pyx_t_11) {
+    __pyx_t_12 = __Pyx_PyErr_ExceptionMatches(__pyx_builtin_NameError);
+    if (__pyx_t_12) {
       __Pyx_AddTraceback("ChronicleLogger", __pyx_clineno, __pyx_lineno, __pyx_filename);
-      if (__Pyx_GetException(&__pyx_t_2, &__pyx_t_3, &__pyx_t_4) < 0) __PYX_ERR(0, 85, __pyx_L4_except_error)
+      if (__Pyx_GetException(&__pyx_t_6, &__pyx_t_2, &__pyx_t_3) < 0) __PYX_ERR(0, 93, __pyx_L5_except_error)
+      __Pyx_XGOTREF(__pyx_t_6);
       __Pyx_XGOTREF(__pyx_t_2);
       __Pyx_XGOTREF(__pyx_t_3);
-      __Pyx_XGOTREF(__pyx_t_4);
 
-      /* "ChronicleLogger.pyx":86
+      /* "ChronicleLogger.pyx":94
  *     basestring
  * except NameError:
  *     basestring = str             # <<<<<<<<<<<<<<
  * 
- * 
+ * # NEW: io.open fallback for encoding='utf-8' support in Py2 (io.open added in Py2.6; use conditional for safety)
 */
-      if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_basestring, ((PyObject *)(&PyUnicode_Type))) < 0) __PYX_ERR(0, 86, __pyx_L4_except_error)
+      if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_basestring, ((PyObject *)(&PyUnicode_Type))) < 0) __PYX_ERR(0, 94, __pyx_L5_except_error)
+      __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
       __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
       __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
-      __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-      goto __pyx_L3_exception_handled;
+      goto __pyx_L4_exception_handled;
     }
-    goto __pyx_L4_except_error;
+    goto __pyx_L5_except_error;
 
-    /* "ChronicleLogger.pyx":83
+    /* "ChronicleLogger.pyx":91
  * # Correct import for your actual file: Suroot.py (capital S)
  * 
  * try:             # <<<<<<<<<<<<<<
  *     basestring
  * except NameError:
 */
-    __pyx_L4_except_error:;
+    __pyx_L5_except_error:;
     __Pyx_XGIVEREF(__pyx_t_1);
-    __Pyx_XGIVEREF(__pyx_t_9);
     __Pyx_XGIVEREF(__pyx_t_10);
-    __Pyx_ExceptionReset(__pyx_t_1, __pyx_t_9, __pyx_t_10);
+    __Pyx_XGIVEREF(__pyx_t_11);
+    __Pyx_ExceptionReset(__pyx_t_1, __pyx_t_10, __pyx_t_11);
     goto __pyx_L1_error;
-    __pyx_L3_exception_handled:;
+    __pyx_L4_exception_handled:;
     __Pyx_XGIVEREF(__pyx_t_1);
-    __Pyx_XGIVEREF(__pyx_t_9);
     __Pyx_XGIVEREF(__pyx_t_10);
-    __Pyx_ExceptionReset(__pyx_t_1, __pyx_t_9, __pyx_t_10);
-    __pyx_L7_try_end:;
+    __Pyx_XGIVEREF(__pyx_t_11);
+    __Pyx_ExceptionReset(__pyx_t_1, __pyx_t_10, __pyx_t_11);
+    __pyx_L8_try_end:;
   }
 
-  /* "ChronicleLogger.pyx":103
+  /* "ChronicleLogger.pyx":97
  * 
+ * # NEW: io.open fallback for encoding='utf-8' support in Py2 (io.open added in Py2.6; use conditional for safety)
+ * try:             # <<<<<<<<<<<<<<
+ *     from io import open as io_open
+ * except ImportError:
+*/
+  {
+    __Pyx_PyThreadState_declare
+    __Pyx_PyThreadState_assign
+    __Pyx_ExceptionSave(&__pyx_t_11, &__pyx_t_10, &__pyx_t_1);
+    __Pyx_XGOTREF(__pyx_t_11);
+    __Pyx_XGOTREF(__pyx_t_10);
+    __Pyx_XGOTREF(__pyx_t_1);
+    /*try:*/ {
+
+      /* "ChronicleLogger.pyx":98
+ * # NEW: io.open fallback for encoding='utf-8' support in Py2 (io.open added in Py2.6; use conditional for safety)
+ * try:
+ *     from io import open as io_open             # <<<<<<<<<<<<<<
+ * except ImportError:
+ *     io_open = open
+*/
+      __pyx_t_3 = __Pyx_PyList_Pack(1, __pyx_mstate_global->__pyx_n_u_open); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 98, __pyx_L11_error)
+      __Pyx_GOTREF(__pyx_t_3);
+      __pyx_t_2 = __Pyx_Import(__pyx_mstate_global->__pyx_n_u_io, __pyx_t_3, 0); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 98, __pyx_L11_error)
+      __Pyx_GOTREF(__pyx_t_2);
+      __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+      __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_mstate_global->__pyx_n_u_open); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 98, __pyx_L11_error)
+      __Pyx_GOTREF(__pyx_t_3);
+      if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_io_open, __pyx_t_3) < 0) __PYX_ERR(0, 98, __pyx_L11_error)
+      __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+      __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+
+      /* "ChronicleLogger.pyx":97
+ * 
+ * # NEW: io.open fallback for encoding='utf-8' support in Py2 (io.open added in Py2.6; use conditional for safety)
+ * try:             # <<<<<<<<<<<<<<
+ *     from io import open as io_open
+ * except ImportError:
+*/
+    }
+    __Pyx_XDECREF(__pyx_t_11); __pyx_t_11 = 0;
+    __Pyx_XDECREF(__pyx_t_10); __pyx_t_10 = 0;
+    __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+    goto __pyx_L16_try_end;
+    __pyx_L11_error:;
+    __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
+    __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
+    __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
+    __Pyx_XDECREF(__pyx_t_7); __pyx_t_7 = 0;
+    __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
+
+    /* "ChronicleLogger.pyx":99
+ * try:
+ *     from io import open as io_open
+ * except ImportError:             # <<<<<<<<<<<<<<
+ *     io_open = open
+ * 
+*/
+    __pyx_t_12 = __Pyx_PyErr_ExceptionMatches(__pyx_builtin_ImportError);
+    if (__pyx_t_12) {
+      __Pyx_AddTraceback("ChronicleLogger", __pyx_clineno, __pyx_lineno, __pyx_filename);
+      if (__Pyx_GetException(&__pyx_t_2, &__pyx_t_3, &__pyx_t_6) < 0) __PYX_ERR(0, 99, __pyx_L13_except_error)
+      __Pyx_XGOTREF(__pyx_t_2);
+      __Pyx_XGOTREF(__pyx_t_3);
+      __Pyx_XGOTREF(__pyx_t_6);
+
+      /* "ChronicleLogger.pyx":100
+ *     from io import open as io_open
+ * except ImportError:
+ *     io_open = open             # <<<<<<<<<<<<<<
+ * 
+ * # baseDir should be independent
+*/
+      if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_io_open, __pyx_builtin_open) < 0) __PYX_ERR(0, 100, __pyx_L13_except_error)
+      __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
+      __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
+      __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
+      goto __pyx_L12_exception_handled;
+    }
+    goto __pyx_L13_except_error;
+
+    /* "ChronicleLogger.pyx":97
+ * 
+ * # NEW: io.open fallback for encoding='utf-8' support in Py2 (io.open added in Py2.6; use conditional for safety)
+ * try:             # <<<<<<<<<<<<<<
+ *     from io import open as io_open
+ * except ImportError:
+*/
+    __pyx_L13_except_error:;
+    __Pyx_XGIVEREF(__pyx_t_11);
+    __Pyx_XGIVEREF(__pyx_t_10);
+    __Pyx_XGIVEREF(__pyx_t_1);
+    __Pyx_ExceptionReset(__pyx_t_11, __pyx_t_10, __pyx_t_1);
+    goto __pyx_L1_error;
+    __pyx_L12_exception_handled:;
+    __Pyx_XGIVEREF(__pyx_t_11);
+    __Pyx_XGIVEREF(__pyx_t_10);
+    __Pyx_XGIVEREF(__pyx_t_1);
+    __Pyx_ExceptionReset(__pyx_t_11, __pyx_t_10, __pyx_t_1);
+    __pyx_L16_try_end:;
+  }
+
+  /* "ChronicleLogger.pyx":115
+ * #              ~/.app/myapp/log  if user is non-root (no matter is sudo or not)
  * 
  * class ChronicleLogger:             # <<<<<<<<<<<<<<
  *     CLASSNAME = "ChronicleLogger"
  *     MAJOR_VERSION = 0
 */
-  __pyx_t_4 = __Pyx_Py3MetaclassPrepare((PyObject *) NULL, __pyx_mstate_global->__pyx_empty_tuple, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, (PyObject *) NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, (PyObject *) NULL); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 103, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_4);
+  __pyx_t_6 = __Pyx_Py3MetaclassPrepare((PyObject *) NULL, __pyx_mstate_global->__pyx_empty_tuple, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, (PyObject *) NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, (PyObject *) NULL); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 115, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_6);
 
-  /* "ChronicleLogger.pyx":104
+  /* "ChronicleLogger.pyx":116
  * 
  * class ChronicleLogger:
  *     CLASSNAME = "ChronicleLogger"             # <<<<<<<<<<<<<<
  *     MAJOR_VERSION = 0
  *     MINOR_VERSION = 1
 */
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_CLASSNAME, __pyx_mstate_global->__pyx_n_u_ChronicleLogger) < 0) __PYX_ERR(0, 104, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_CLASSNAME, __pyx_mstate_global->__pyx_n_u_ChronicleLogger) < 0) __PYX_ERR(0, 116, __pyx_L1_error)
 
-  /* "ChronicleLogger.pyx":105
+  /* "ChronicleLogger.pyx":117
  * class ChronicleLogger:
  *     CLASSNAME = "ChronicleLogger"
  *     MAJOR_VERSION = 0             # <<<<<<<<<<<<<<
  *     MINOR_VERSION = 1
- *     PATCH_VERSION = 0
+ *     PATCH_VERSION = 1
 */
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_MAJOR_VERSION, __pyx_mstate_global->__pyx_int_0) < 0) __PYX_ERR(0, 105, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_MAJOR_VERSION, __pyx_mstate_global->__pyx_int_0) < 0) __PYX_ERR(0, 117, __pyx_L1_error)
 
-  /* "ChronicleLogger.pyx":106
+  /* "ChronicleLogger.pyx":118
  *     CLASSNAME = "ChronicleLogger"
  *     MAJOR_VERSION = 0
  *     MINOR_VERSION = 1             # <<<<<<<<<<<<<<
- *     PATCH_VERSION = 0
+ *     PATCH_VERSION = 1
  * 
 */
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_MINOR_VERSION, __pyx_mstate_global->__pyx_int_1) < 0) __PYX_ERR(0, 106, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_MINOR_VERSION, __pyx_mstate_global->__pyx_int_1) < 0) __PYX_ERR(0, 118, __pyx_L1_error)
 
-  /* "ChronicleLogger.pyx":107
+  /* "ChronicleLogger.pyx":119
  *     MAJOR_VERSION = 0
  *     MINOR_VERSION = 1
- *     PATCH_VERSION = 0             # <<<<<<<<<<<<<<
+ *     PATCH_VERSION = 1             # <<<<<<<<<<<<<<
  * 
  *     LOG_ARCHIVE_DAYS = 7
 */
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_PATCH_VERSION, __pyx_mstate_global->__pyx_int_0) < 0) __PYX_ERR(0, 107, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_PATCH_VERSION, __pyx_mstate_global->__pyx_int_1) < 0) __PYX_ERR(0, 119, __pyx_L1_error)
 
-  /* "ChronicleLogger.pyx":109
- *     PATCH_VERSION = 0
+  /* "ChronicleLogger.pyx":121
+ *     PATCH_VERSION = 1
  * 
  *     LOG_ARCHIVE_DAYS = 7             # <<<<<<<<<<<<<<
  *     LOG_REMOVAL_DAYS = 30
  * 
 */
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_LOG_ARCHIVE_DAYS, __pyx_mstate_global->__pyx_int_7) < 0) __PYX_ERR(0, 109, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_LOG_ARCHIVE_DAYS, __pyx_mstate_global->__pyx_int_7) < 0) __PYX_ERR(0, 121, __pyx_L1_error)
 
-  /* "ChronicleLogger.pyx":110
+  /* "ChronicleLogger.pyx":122
  * 
  *     LOG_ARCHIVE_DAYS = 7
  *     LOG_REMOVAL_DAYS = 30             # <<<<<<<<<<<<<<
  * 
  *     def __init__(self, logname=b"app", logdir=b"", basedir=b""):
 */
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_LOG_REMOVAL_DAYS, __pyx_mstate_global->__pyx_int_30) < 0) __PYX_ERR(0, 110, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_LOG_REMOVAL_DAYS, __pyx_mstate_global->__pyx_int_30) < 0) __PYX_ERR(0, 122, __pyx_L1_error)
 
-  /* "ChronicleLogger.pyx":112
+  /* "ChronicleLogger.pyx":124
  *     LOG_REMOVAL_DAYS = 30
  * 
  *     def __init__(self, logname=b"app", logdir=b"", basedir=b""):             # <<<<<<<<<<<<<<
  *         self.__logname__ = None
  *         self.__basedir__ = None
 */
-  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_1__init__, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger___init, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[4])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 112, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_1__init__, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger___init, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[4])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 124, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __Pyx_CyFunction_SetDefaultsTuple(__pyx_t_3, __pyx_mstate_global->__pyx_tuple[3]);
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_init, __pyx_t_3) < 0) __PYX_ERR(0, 112, __pyx_L1_error)
+  __Pyx_CyFunction_SetDefaultsTuple(__pyx_t_3, __pyx_mstate_global->__pyx_tuple[5]);
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_init, __pyx_t_3) < 0) __PYX_ERR(0, 124, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":135
+  /* "ChronicleLogger.pyx":150
  *             self.write_to_file("\n")
  * 
  *     def strToByte(self, value):             # <<<<<<<<<<<<<<
  *         if isinstance(value, basestring):
- *             return value.encode()
+ *             return value.encode('utf-8')  # NEW: Explicit utf-8 for Py3 bytes consistency
 */
-  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_3strToByte, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_strToByte, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[5])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 135, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_3strToByte, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_strToByte, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[5])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 150, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_strToByte, __pyx_t_3) < 0) __PYX_ERR(0, 135, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_strToByte, __pyx_t_3) < 0) __PYX_ERR(0, 150, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":142
- *         raise TypeError(f"Expected str/bytes/None, got {type(value).__name__}")
+  /* "ChronicleLogger.pyx":158
+ *         raise TypeError("Expected str/bytes/None, got {0}".format(type(value).__name__))
  * 
  *     def byteToStr(self, value):             # <<<<<<<<<<<<<<
  *         if value is None or isinstance(value, basestring):
  *             return value
 */
-  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_5byteToStr, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_byteToStr, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[6])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 142, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_5byteToStr, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_byteToStr, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[6])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 158, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_byteToStr, __pyx_t_3) < 0) __PYX_ERR(0, 142, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_byteToStr, __pyx_t_3) < 0) __PYX_ERR(0, 158, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":149
- *         raise TypeError(f"Expected str/bytes/None, got {type(value).__name__}")
+  /* "ChronicleLogger.pyx":166
+ *         raise TypeError("Expected str/bytes/None, got {0}".format(type(value).__name__))
  * 
  *     def inPython(self):             # <<<<<<<<<<<<<<
  *         if self.__is_python__ is None:
  *             self.__is_python__ = 'python' in sys.executable.lower()
 */
-  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_7inPython, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_inPython, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[7])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 149, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_7inPython, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_inPython, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[7])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 166, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_inPython, __pyx_t_3) < 0) __PYX_ERR(0, 149, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_inPython, __pyx_t_3) < 0) __PYX_ERR(0, 166, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":154
+  /* "ChronicleLogger.pyx":171
  *         return self.__is_python__
  * 
  *     def logName(self, logname=None):             # <<<<<<<<<<<<<<
  *         if logname is not None:
  *             self.__logname__ = self.strToByte(logname)
 */
-  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_9logName, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_logName, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[8])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 154, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_9logName, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_logName, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[8])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 171, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __Pyx_CyFunction_SetDefaultsTuple(__pyx_t_3, __pyx_mstate_global->__pyx_tuple[4]);
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_logName, __pyx_t_3) < 0) __PYX_ERR(0, 154, __pyx_L1_error)
+  __Pyx_CyFunction_SetDefaultsTuple(__pyx_t_3, __pyx_mstate_global->__pyx_tuple[6]);
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_logName, __pyx_t_3) < 0) __PYX_ERR(0, 171, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":164
- *             return self.__logname__.decode()
+  /* "ChronicleLogger.pyx":181
+ *             return self.__logname__.decode('utf-8')  # NEW: Explicit decode
  * 
  *     def __set_base_dir__(self, basedir=b""):             # <<<<<<<<<<<<<<
  *         basedir_str = self.byteToStr(basedir)
- *         if not basedir_str:
+ *         if not basedir_str or basedir_str=='':
 */
-  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_11__set_base_dir__, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger___set_base_dir, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[9])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 164, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_11__set_base_dir__, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger___set_base_dir, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[9])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 181, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __Pyx_CyFunction_SetDefaultsTuple(__pyx_t_3, __pyx_mstate_global->__pyx_tuple[5]);
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_set_base_dir, __pyx_t_3) < 0) __PYX_ERR(0, 164, __pyx_L1_error)
+  __Pyx_CyFunction_SetDefaultsTuple(__pyx_t_3, __pyx_mstate_global->__pyx_tuple[7]);
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_set_base_dir, __pyx_t_3) < 0) __PYX_ERR(0, 181, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":177
+  /* "ChronicleLogger.pyx":196
  *             self.__basedir__ = basedir_str
  * 
  *     def baseDir(self, basedir=None):             # <<<<<<<<<<<<<<
  *         if basedir is not None:
  *             self.__set_base_dir__(basedir)
 */
-  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_13baseDir, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_baseDir, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[10])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 177, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_13baseDir, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_baseDir, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[10])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 196, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __Pyx_CyFunction_SetDefaultsTuple(__pyx_t_3, __pyx_mstate_global->__pyx_tuple[4]);
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_baseDir, __pyx_t_3) < 0) __PYX_ERR(0, 177, __pyx_L1_error)
+  __Pyx_CyFunction_SetDefaultsTuple(__pyx_t_3, __pyx_mstate_global->__pyx_tuple[6]);
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_baseDir, __pyx_t_3) < 0) __PYX_ERR(0, 196, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":185
+  /* "ChronicleLogger.pyx":204
  *             return self.__basedir__
  * 
  *     def __set_log_dir__(self, logdir=b""):             # <<<<<<<<<<<<<<
  *         logdir_str = self.byteToStr(logdir)
- *         if logdir_str:
+ *         if logdir_str and logdir_str!='':
 */
-  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_15__set_log_dir__, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger___set_log_dir, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[11])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 185, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_15__set_log_dir__, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger___set_log_dir, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[11])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 204, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __Pyx_CyFunction_SetDefaultsTuple(__pyx_t_3, __pyx_mstate_global->__pyx_tuple[5]);
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_set_log_dir, __pyx_t_3) < 0) __PYX_ERR(0, 185, __pyx_L1_error)
+  __Pyx_CyFunction_SetDefaultsTuple(__pyx_t_3, __pyx_mstate_global->__pyx_tuple[7]);
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_set_log_dir, __pyx_t_3) < 0) __PYX_ERR(0, 204, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":197
- *                 self.__logdir__ = os.path.join(home, f".app/{appname}", "log")
+  /* "ChronicleLogger.pyx":218
+ *                 self.__logdir__ = os.path.join(home, ".app/{0}".format(appname), "log")
  * 
  *     def logDir(self, logdir=None):             # <<<<<<<<<<<<<<
  *         if logdir is not None:
  *             self.__set_log_dir__(logdir)
 */
-  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_17logDir, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_logDir, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[12])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 197, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_17logDir, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_logDir, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[12])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 218, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __Pyx_CyFunction_SetDefaultsTuple(__pyx_t_3, __pyx_mstate_global->__pyx_tuple[4]);
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_logDir, __pyx_t_3) < 0) __PYX_ERR(0, 197, __pyx_L1_error)
+  __Pyx_CyFunction_SetDefaultsTuple(__pyx_t_3, __pyx_mstate_global->__pyx_tuple[6]);
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_logDir, __pyx_t_3) < 0) __PYX_ERR(0, 218, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":205
+  /* "ChronicleLogger.pyx":226
  *             return self.__logdir__
  * 
  *     def isDebug(self):             # <<<<<<<<<<<<<<
  *         if not hasattr(self, '__is_debug__'):
  *             self.__is_debug__ = (
 */
-  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_19isDebug, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_isDebug, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[13])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 205, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_19isDebug, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_isDebug, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[13])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 226, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_isDebug, __pyx_t_3) < 0) __PYX_ERR(0, 205, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_isDebug, __pyx_t_3) < 0) __PYX_ERR(0, 226, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":213
+  /* "ChronicleLogger.pyx":234
  *         return self.__is_debug__
  * 
  *     @staticmethod             # <<<<<<<<<<<<<<
  *     def class_version():
- *         return f"{ChronicleLogger.CLASSNAME} v{ChronicleLogger.MAJOR_VERSION}.{ChronicleLogger.MINOR_VERSION}.{ChronicleLogger.PATCH_VERSION}"
+ *         # NEW: Replaced f-string with .format()
 */
   __pyx_t_2 = NULL;
   __Pyx_INCREF(__pyx_builtin_staticmethod);
-  __pyx_t_5 = __pyx_builtin_staticmethod; 
-  __pyx_t_8 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_21class_version, __Pyx_CYFUNCTION_STATICMETHOD, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_class_version, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[14])); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 213, __pyx_L1_error)
+  __pyx_t_7 = __pyx_builtin_staticmethod; 
+  __pyx_t_8 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_21class_version, __Pyx_CYFUNCTION_STATICMETHOD, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_class_version, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[14])); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 234, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_8);
-  __pyx_t_7 = 1;
+  __pyx_t_9 = 1;
   {
     PyObject *__pyx_callargs[2] = {__pyx_t_2, __pyx_t_8};
-    __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_5, __pyx_callargs+__pyx_t_7, (2-__pyx_t_7) | (__pyx_t_7*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+    __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_7, __pyx_callargs+__pyx_t_9, (2-__pyx_t_9) | (__pyx_t_9*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
     __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
     __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
-    __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 213, __pyx_L1_error)
+    __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 234, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_3);
   }
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_class_version, __pyx_t_3) < 0) __PYX_ERR(0, 213, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_class_version, __pyx_t_3) < 0) __PYX_ERR(0, 234, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":217
- *         return f"{ChronicleLogger.CLASSNAME} v{ChronicleLogger.MAJOR_VERSION}.{ChronicleLogger.MINOR_VERSION}.{ChronicleLogger.PATCH_VERSION}"
+  /* "ChronicleLogger.pyx":239
+ *         return "{0.CLASSNAME} v{0.MAJOR_VERSION}.{0.MINOR_VERSION}.{0.PATCH_VERSION}".format(ChronicleLogger)
  * 
  *     def ensure_directory_exists(self, dir_path):             # <<<<<<<<<<<<<<
- *         if dir_path and not os.path.exists(dir_path):
- *             try:
+ *         # Example for ensure_directory_exists (around line 172)
+ *         try:
 */
-  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_23ensure_directory_exists, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_ensure_directory, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[15])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 217, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_23ensure_directory_exists, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_ensure_directory, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[15])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 239, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_ensure_directory_exists, __pyx_t_3) < 0) __PYX_ERR(0, 217, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_ensure_directory_exists, __pyx_t_3) < 0) __PYX_ERR(0, 239, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":225
- *                 self.log_message(f"Failed to create directory {dir_path}: {e}", level="ERROR")
+  /* "ChronicleLogger.pyx":254
+ *             self.log_message("Failed to create directory {0}: {1}".format(dir_path, e), level="ERROR")
  * 
  *     def _get_log_filename(self):             # <<<<<<<<<<<<<<
  *         date_str = datetime.now().strftime('%Y%m%d')
- *         filename = f"{self.__logdir__}/{self.__logname__.decode()}-{date_str}.log"
+ *         # NEW: Replaced f-string with .format(); explicit decode/encode for path handling
 */
-  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_25_get_log_filename, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger__get_log_filenam, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[16])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 225, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_25_get_log_filename, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger__get_log_filenam, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[16])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 254, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_get_log_filename, __pyx_t_3) < 0) __PYX_ERR(0, 225, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_get_log_filename, __pyx_t_3) < 0) __PYX_ERR(0, 254, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":230
- *         return ctypes.c_char_p(filename.encode()).value
+  /* "ChronicleLogger.pyx":262
+ *         return ctypes.c_char_p(filename.encode('utf-8')).value
  * 
  *     def log_message(self, message, level=b"INFO", component=b""):             # <<<<<<<<<<<<<<
  *         pid = os.getpid()
  *         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 */
-  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_27log_message, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_log_message, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[17])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 230, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_27log_message, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_log_message, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[17])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 262, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __Pyx_CyFunction_SetDefaultsTuple(__pyx_t_3, __pyx_mstate_global->__pyx_tuple[6]);
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_log_message, __pyx_t_3) < 0) __PYX_ERR(0, 230, __pyx_L1_error)
+  __Pyx_CyFunction_SetDefaultsTuple(__pyx_t_3, __pyx_mstate_global->__pyx_tuple[8]);
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_log_message, __pyx_t_3) < 0) __PYX_ERR(0, 262, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":256
+  /* "ChronicleLogger.pyx":291
  *             self.write_to_file(log_entry)
  * 
  *     def _has_write_permission(self, file_path):             # <<<<<<<<<<<<<<
+ *         # Example for _has_write_permission
  *         try:
- *             with open(file_path, 'a'):
 */
-  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_29_has_write_permission, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger__has_write_permi, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[18])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 256, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_29_has_write_permission, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger__has_write_permi, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[18])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 291, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_has_write_permission, __pyx_t_3) < 0) __PYX_ERR(0, 256, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_has_write_permission, __pyx_t_3) < 0) __PYX_ERR(0, 291, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":264
- *             return False
+  /* "ChronicleLogger.pyx":311
+ *                     return False
  * 
  *     def write_to_file(self, log_entry):             # <<<<<<<<<<<<<<
- *         with open(self.__current_logfile_path__, 'a', encoding='utf-8') as f:
- *             f.write(log_entry)
+ *         # NEW: Use io_open for encoding support in Py2/3
+ *         with io_open(self.__current_logfile_path__, 'a', encoding='utf-8') as f:
 */
-  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_31write_to_file, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_write_to_file, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[19])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 264, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_31write_to_file, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_write_to_file, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[19])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 311, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_write_to_file, __pyx_t_3) < 0) __PYX_ERR(0, 264, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_write_to_file, __pyx_t_3) < 0) __PYX_ERR(0, 311, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":268
+  /* "ChronicleLogger.pyx":316
  *             f.write(log_entry)
  * 
  *     def log_rotation(self):             # <<<<<<<<<<<<<<
  *         if not os.path.exists(self.__logdir__) or not os.listdir(self.__logdir__):
  *             return
 */
-  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_33log_rotation, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_log_rotation, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[20])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 268, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_33log_rotation, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_log_rotation, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[20])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 316, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_log_rotation, __pyx_t_3) < 0) __PYX_ERR(0, 268, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_log_rotation, __pyx_t_3) < 0) __PYX_ERR(0, 316, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":274
+  /* "ChronicleLogger.pyx":322
  *         self.remove_old_logs()
  * 
  *     def archive_old_logs(self):             # <<<<<<<<<<<<<<
  *         try:
  *             for file in os.listdir(self.__logdir__):
 */
-  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_35archive_old_logs, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_archive_old_logs, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[21])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 274, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_35archive_old_logs, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_archive_old_logs, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[21])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 322, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_archive_old_logs, __pyx_t_3) < 0) __PYX_ERR(0, 274, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_archive_old_logs, __pyx_t_3) < 0) __PYX_ERR(0, 322, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":288
- *             print(f"Error during archive: {e}", file=sys.stderr)
+  /* "ChronicleLogger.pyx":341
+ * 
  * 
  *     def _archive_log(self, filename):             # <<<<<<<<<<<<<<
  *         log_path = os.path.join(self.__logdir__, filename)
  *         archive_path = log_path + ".tar.gz"
 */
-  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_37_archive_log, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger__archive_log, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[22])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 288, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_37_archive_log, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger__archive_log, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[22])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 341, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_archive_log, __pyx_t_3) < 0) __PYX_ERR(0, 288, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_archive_log, __pyx_t_3) < 0) __PYX_ERR(0, 341, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":299
- *             print(f"Error archiving {filename}: {e}", file=sys.stderr)
+  /* "ChronicleLogger.pyx":357
+ *         print("Error archiving {0}: {1}".format(filename, e), file=sys.stderr)
  * 
  *     def remove_old_logs(self):             # <<<<<<<<<<<<<<
  *         try:
  *             for file in os.listdir(self.__logdir__):
 */
-  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_39remove_old_logs, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_remove_old_logs, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[23])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 299, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_15ChronicleLogger_15ChronicleLogger_39remove_old_logs, 0, __pyx_mstate_global->__pyx_n_u_ChronicleLogger_remove_old_logs, NULL, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[23])); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 357, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (__Pyx_SetNameInClass(__pyx_t_4, __pyx_mstate_global->__pyx_n_u_remove_old_logs, __pyx_t_3) < 0) __PYX_ERR(0, 299, __pyx_L1_error)
+  if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_mstate_global->__pyx_n_u_remove_old_logs, __pyx_t_3) < 0) __PYX_ERR(0, 357, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "ChronicleLogger.pyx":103
- * 
+  /* "ChronicleLogger.pyx":115
+ * #              ~/.app/myapp/log  if user is non-root (no matter is sudo or not)
  * 
  * class ChronicleLogger:             # <<<<<<<<<<<<<<
  *     CLASSNAME = "ChronicleLogger"
  *     MAJOR_VERSION = 0
 */
-  __pyx_t_3 = __Pyx_Py3ClassCreate(((PyObject*)&PyType_Type), __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_empty_tuple, __pyx_t_4, NULL, 0, 0); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 103, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_Py3ClassCreate(((PyObject*)&PyType_Type), __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_mstate_global->__pyx_empty_tuple, __pyx_t_6, NULL, 0, 0); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 115, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_t_3) < 0) __PYX_ERR(0, 103, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_ChronicleLogger, __pyx_t_3) < 0) __PYX_ERR(0, 115, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+  __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
 
   /* "ChronicleLogger.pyx":1
  * # -*- coding: utf-8 -*-             # <<<<<<<<<<<<<<
  * # Generated by DependencyMerge  all imports deduplicated and cleaned
  * 
 */
-  __pyx_t_4 = __Pyx_PyDict_NewPresized(0); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 1, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_4);
-  if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_test, __pyx_t_4) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+  __pyx_t_6 = __Pyx_PyDict_NewPresized(0); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 1, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_6);
+  if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_test, __pyx_t_6) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
 
   /*--- Wrapped vars code ---*/
 
@@ -12486,9 +13464,8 @@ __Pyx_RefNannySetupContext("PyInit_ChronicleLogger", 0);
   __pyx_L1_error:;
   __Pyx_XDECREF(__pyx_t_2);
   __Pyx_XDECREF(__pyx_t_3);
-  __Pyx_XDECREF(__pyx_t_4);
-  __Pyx_XDECREF(__pyx_t_5);
   __Pyx_XDECREF(__pyx_t_6);
+  __Pyx_XDECREF(__pyx_t_7);
   __Pyx_XDECREF(__pyx_t_8);
   if (__pyx_m) {
     if (__pyx_mstate->__pyx_d && stringtab_initialized) {
@@ -12543,9 +13520,15 @@ typedef struct {
 } __Pyx_StringTabEntry;
 static const char * const __pyx_string_tab_encodings[] = { 0 };
 static const __Pyx_StringTabEntry __pyx_string_tab[] = {
+  {__pyx_k_, sizeof(__pyx_k_), 0, 0, 0}, /* PyObject cname: __pyx_kp_b_ */
   {__pyx_k_, sizeof(__pyx_k_), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_ */
+  {__pyx_k_0, sizeof(__pyx_k_0), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_0 */
+  {__pyx_k_0_1_2_log, sizeof(__pyx_k_0_1_2_log), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_0_1_2_log */
+  {__pyx_k_0_CLASSNAME_v_0_MAJOR_VERSION_0, sizeof(__pyx_k_0_CLASSNAME_v_0_MAJOR_VERSION_0), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_0_CLASSNAME_v_0_MAJOR_VERSION_0 */
+  {__pyx_k_0_pid_1_2_3_4, sizeof(__pyx_k_0_pid_1_2_3_4), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_0_pid_1_2_3_4 */
+  {__pyx_k_0_pid_1_INFO_logger_Using_2, sizeof(__pyx_k_0_pid_1_INFO_logger_Using_2), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_0_pid_1_INFO_logger_Using_2 */
   {__pyx_k_A_Z, sizeof(__pyx_k_A_Z), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_A_Z */
-  {__pyx_k_Archived_log_file, sizeof(__pyx_k_Archived_log_file), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_Archived_log_file */
+  {__pyx_k_Archived_log_file_0, sizeof(__pyx_k_Archived_log_file_0), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_Archived_log_file_0 */
   {__pyx_k_CLASSNAME, sizeof(__pyx_k_CLASSNAME), 0, 1, 1}, /* PyObject cname: __pyx_n_u_CLASSNAME */
   {__pyx_k_CRITICAL, sizeof(__pyx_k_CRITICAL), 0, 1, 1}, /* PyObject cname: __pyx_n_u_CRITICAL */
   {__pyx_k_ChronicleLogger, sizeof(__pyx_k_ChronicleLogger), 0, 1, 1}, /* PyObject cname: __pyx_n_u_ChronicleLogger */
@@ -12569,27 +13552,26 @@ static const __Pyx_StringTabEntry __pyx_string_tab[] = {
   {__pyx_k_ChronicleLogger_remove_old_logs, sizeof(__pyx_k_ChronicleLogger_remove_old_logs), 0, 1, 1}, /* PyObject cname: __pyx_n_u_ChronicleLogger_remove_old_logs */
   {__pyx_k_ChronicleLogger_strToByte, sizeof(__pyx_k_ChronicleLogger_strToByte), 0, 1, 1}, /* PyObject cname: __pyx_n_u_ChronicleLogger_strToByte */
   {__pyx_k_ChronicleLogger_write_to_file, sizeof(__pyx_k_ChronicleLogger_write_to_file), 0, 1, 1}, /* PyObject cname: __pyx_n_u_ChronicleLogger_write_to_file */
-  {__pyx_k_Created_directory, sizeof(__pyx_k_Created_directory), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_Created_directory */
+  {__pyx_k_Created_directory_0, sizeof(__pyx_k_Created_directory_0), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_Created_directory_0 */
   {__pyx_k_DEBUG, sizeof(__pyx_k_DEBUG), 0, 1, 1}, /* PyObject cname: __pyx_n_u_DEBUG */
   {__pyx_k_DEVNULL, sizeof(__pyx_k_DEVNULL), 0, 1, 1}, /* PyObject cname: __pyx_n_u_DEVNULL */
   {__pyx_k_ERROR, sizeof(__pyx_k_ERROR), 0, 1, 1}, /* PyObject cname: __pyx_n_u_ERROR */
-  {__pyx_k_Error_archiving, sizeof(__pyx_k_Error_archiving), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_Error_archiving */
-  {__pyx_k_Error_during_archive, sizeof(__pyx_k_Error_during_archive), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_Error_during_archive */
-  {__pyx_k_Error_during_removal, sizeof(__pyx_k_Error_during_removal), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_Error_during_removal */
-  {__pyx_k_Expected_str_bytes_None_got, sizeof(__pyx_k_Expected_str_bytes_None_got), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_Expected_str_bytes_None_got */
+  {__pyx_k_Error_archiving_0_1, sizeof(__pyx_k_Error_archiving_0_1), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_Error_archiving_0_1 */
+  {__pyx_k_Error_during_archive_0, sizeof(__pyx_k_Error_during_archive_0), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_Error_during_archive_0 */
+  {__pyx_k_Error_during_removal_0, sizeof(__pyx_k_Error_during_removal_0), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_Error_during_removal_0 */
+  {__pyx_k_Expected_str_bytes_None_got_0, sizeof(__pyx_k_Expected_str_bytes_None_got_0), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_Expected_str_bytes_None_got_0 */
   {__pyx_k_FATAL, sizeof(__pyx_k_FATAL), 0, 1, 1}, /* PyObject cname: __pyx_n_u_FATAL */
-  {__pyx_k_Failed_to_create_directory, sizeof(__pyx_k_Failed_to_create_directory), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_Failed_to_create_directory */
+  {__pyx_k_Failed_to_create_directory_0_1, sizeof(__pyx_k_Failed_to_create_directory_0_1), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_Failed_to_create_directory_0_1 */
   {__pyx_k_INFO, sizeof(__pyx_k_INFO), 0, 0, 1}, /* PyObject cname: __pyx_n_b_INFO */
-  {__pyx_k_INFO_logger_Using, sizeof(__pyx_k_INFO_logger_Using), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_INFO_logger_Using */
   {__pyx_k_IOError, sizeof(__pyx_k_IOError), 0, 1, 1}, /* PyObject cname: __pyx_n_u_IOError */
+  {__pyx_k_ImportError, sizeof(__pyx_k_ImportError), 0, 1, 1}, /* PyObject cname: __pyx_n_u_ImportError */
   {__pyx_k_LOG_ARCHIVE_DAYS, sizeof(__pyx_k_LOG_ARCHIVE_DAYS), 0, 1, 1}, /* PyObject cname: __pyx_n_u_LOG_ARCHIVE_DAYS */
   {__pyx_k_LOG_REMOVAL_DAYS, sizeof(__pyx_k_LOG_REMOVAL_DAYS), 0, 1, 1}, /* PyObject cname: __pyx_n_u_LOG_REMOVAL_DAYS */
   {__pyx_k_MAJOR_VERSION, sizeof(__pyx_k_MAJOR_VERSION), 0, 1, 1}, /* PyObject cname: __pyx_n_u_MAJOR_VERSION */
   {__pyx_k_MINOR_VERSION, sizeof(__pyx_k_MINOR_VERSION), 0, 1, 1}, /* PyObject cname: __pyx_n_u_MINOR_VERSION */
   {__pyx_k_NameError, sizeof(__pyx_k_NameError), 0, 1, 1}, /* PyObject cname: __pyx_n_u_NameError */
-  {__pyx_k_None, sizeof(__pyx_k_None), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_None */
+  {__pyx_k_OSError, sizeof(__pyx_k_OSError), 0, 1, 1}, /* PyObject cname: __pyx_n_u_OSError */
   {__pyx_k_PATCH_VERSION, sizeof(__pyx_k_PATCH_VERSION), 0, 1, 1}, /* PyObject cname: __pyx_n_u_PATCH_VERSION */
-  {__pyx_k_PermissionError, sizeof(__pyx_k_PermissionError), 0, 1, 1}, /* PyObject cname: __pyx_n_u_PermissionError */
   {__pyx_k_Permission_denied_for_writing_to, sizeof(__pyx_k_Permission_denied_for_writing_to), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_Permission_denied_for_writing_to */
   {__pyx_k_Popen, sizeof(__pyx_k_Popen), 0, 1, 1}, /* PyObject cname: __pyx_n_u_Popen */
   {__pyx_k_Suroot, sizeof(__pyx_k_Suroot), 0, 1, 1}, /* PyObject cname: __pyx_n_u_Suroot */
@@ -12603,23 +13585,15 @@ static const __Pyx_StringTabEntry __pyx_string_tab[] = {
   {__pyx_k_ValueError, sizeof(__pyx_k_ValueError), 0, 1, 1}, /* PyObject cname: __pyx_n_u_ValueError */
   {__pyx_k_Y_m_d, sizeof(__pyx_k_Y_m_d), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_Y_m_d */
   {__pyx_k_Y_m_d_H_M_S, sizeof(__pyx_k_Y_m_d_H_M_S), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_Y_m_d_H_M_S */
-  {__pyx_k__10, sizeof(__pyx_k__10), 0, 1, 0}, /* PyObject cname: __pyx_kp_u__10 */
-  {__pyx_k__11, sizeof(__pyx_k__11), 0, 1, 0}, /* PyObject cname: __pyx_kp_u__11 */
-  {__pyx_k__12, sizeof(__pyx_k__12), 0, 1, 0}, /* PyObject cname: __pyx_kp_u__12 */
-  {__pyx_k__13, sizeof(__pyx_k__13), 0, 1, 0}, /* PyObject cname: __pyx_kp_u__13 */
-  {__pyx_k__2, sizeof(__pyx_k__2), 0, 0, 0}, /* PyObject cname: __pyx_kp_b__2 */
   {__pyx_k__2, sizeof(__pyx_k__2), 0, 1, 0}, /* PyObject cname: __pyx_kp_u__2 */
   {__pyx_k__3, sizeof(__pyx_k__3), 0, 1, 0}, /* PyObject cname: __pyx_kp_u__3 */
   {__pyx_k__4, sizeof(__pyx_k__4), 0, 1, 0}, /* PyObject cname: __pyx_kp_u__4 */
   {__pyx_k__5, sizeof(__pyx_k__5), 0, 1, 0}, /* PyObject cname: __pyx_kp_u__5 */
   {__pyx_k__6, sizeof(__pyx_k__6), 0, 1, 0}, /* PyObject cname: __pyx_kp_u__6 */
-  {__pyx_k__7, sizeof(__pyx_k__7), 0, 1, 0}, /* PyObject cname: __pyx_kp_u__7 */
-  {__pyx_k__8, sizeof(__pyx_k__8), 0, 1, 0}, /* PyObject cname: __pyx_kp_u__8 */
-  {__pyx_k__9, sizeof(__pyx_k__9), 0, 1, 0}, /* PyObject cname: __pyx_kp_u__9 */
   {__pyx_k_a, sizeof(__pyx_k_a), 0, 1, 1}, /* PyObject cname: __pyx_n_u_a */
   {__pyx_k_add, sizeof(__pyx_k_add), 0, 1, 1}, /* PyObject cname: __pyx_n_u_add */
   {__pyx_k_app, sizeof(__pyx_k_app), 0, 0, 1}, /* PyObject cname: __pyx_n_b_app */
-  {__pyx_k_app_2, sizeof(__pyx_k_app_2), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_app_2 */
+  {__pyx_k_app_0, sizeof(__pyx_k_app_0), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_app_0 */
   {__pyx_k_appname, sizeof(__pyx_k_appname), 0, 1, 1}, /* PyObject cname: __pyx_n_u_appname */
   {__pyx_k_archive_log, sizeof(__pyx_k_archive_log), 0, 1, 1}, /* PyObject cname: __pyx_n_u_archive_log */
   {__pyx_k_archive_old_logs, sizeof(__pyx_k_archive_old_logs), 0, 1, 1}, /* PyObject cname: __pyx_n_u_archive_old_logs */
@@ -12631,7 +13605,6 @@ static const __Pyx_StringTabEntry __pyx_string_tab[] = {
   {__pyx_k_basedir_2, sizeof(__pyx_k_basedir_2), 0, 1, 1}, /* PyObject cname: __pyx_n_u_basedir_2 */
   {__pyx_k_basedir_str, sizeof(__pyx_k_basedir_str), 0, 1, 1}, /* PyObject cname: __pyx_n_u_basedir_str */
   {__pyx_k_basestring, sizeof(__pyx_k_basestring), 0, 1, 1}, /* PyObject cname: __pyx_n_u_basestring */
-  {__pyx_k_bool, sizeof(__pyx_k_bool), 0, 1, 1}, /* PyObject cname: __pyx_n_u_bool */
   {__pyx_k_byteToStr, sizeof(__pyx_k_byteToStr), 0, 1, 1}, /* PyObject cname: __pyx_n_u_byteToStr */
   {__pyx_k_c_char_p, sizeof(__pyx_k_c_char_p), 0, 1, 1}, /* PyObject cname: __pyx_n_u_c_char_p */
   {__pyx_k_can_sudo_nopasswd, sizeof(__pyx_k_can_sudo_nopasswd), 0, 1, 1}, /* PyObject cname: __pyx_n_u_can_sudo_nopasswd */
@@ -12649,6 +13622,8 @@ static const __Pyx_StringTabEntry __pyx_string_tab[] = {
   {__pyx_k_days, sizeof(__pyx_k_days), 0, 1, 1}, /* PyObject cname: __pyx_n_u_days */
   {__pyx_k_debug, sizeof(__pyx_k_debug), 0, 1, 1}, /* PyObject cname: __pyx_n_u_debug */
   {__pyx_k_decode, sizeof(__pyx_k_decode), 0, 1, 1}, /* PyObject cname: __pyx_n_u_decode */
+  {__pyx_k_devnull, sizeof(__pyx_k_devnull), 0, 1, 1}, /* PyObject cname: __pyx_n_u_devnull */
+  {__pyx_k_dir_decoded, sizeof(__pyx_k_dir_decoded), 0, 1, 1}, /* PyObject cname: __pyx_n_u_dir_decoded */
   {__pyx_k_dir_path, sizeof(__pyx_k_dir_path), 0, 1, 1}, /* PyObject cname: __pyx_n_u_dir_path */
   {__pyx_k_doc, sizeof(__pyx_k_doc), 0, 1, 1}, /* PyObject cname: __pyx_n_u_doc */
   {__pyx_k_e, sizeof(__pyx_k_e), 0, 1, 1}, /* PyObject cname: __pyx_n_u_e */
@@ -12657,6 +13632,10 @@ static const __Pyx_StringTabEntry __pyx_string_tab[] = {
   {__pyx_k_endswith, sizeof(__pyx_k_endswith), 0, 1, 1}, /* PyObject cname: __pyx_n_u_endswith */
   {__pyx_k_ensure_directory_exists, sizeof(__pyx_k_ensure_directory_exists), 0, 1, 1}, /* PyObject cname: __pyx_n_u_ensure_directory_exists */
   {__pyx_k_enter, sizeof(__pyx_k_enter), 0, 1, 1}, /* PyObject cname: __pyx_n_u_enter */
+  {__pyx_k_exc_info, sizeof(__pyx_k_exc_info), 0, 1, 1}, /* PyObject cname: __pyx_n_u_exc_info */
+  {__pyx_k_exc_tb, sizeof(__pyx_k_exc_tb), 0, 1, 1}, /* PyObject cname: __pyx_n_u_exc_tb */
+  {__pyx_k_exc_type, sizeof(__pyx_k_exc_type), 0, 1, 1}, /* PyObject cname: __pyx_n_u_exc_type */
+  {__pyx_k_exc_value, sizeof(__pyx_k_exc_value), 0, 1, 1}, /* PyObject cname: __pyx_n_u_exc_value */
   {__pyx_k_executable, sizeof(__pyx_k_executable), 0, 1, 1}, /* PyObject cname: __pyx_n_u_executable */
   {__pyx_k_exists, sizeof(__pyx_k_exists), 0, 1, 1}, /* PyObject cname: __pyx_n_u_exists */
   {__pyx_k_exit, sizeof(__pyx_k_exit), 0, 1, 1}, /* PyObject cname: __pyx_n_u_exit */
@@ -12665,6 +13644,7 @@ static const __Pyx_StringTabEntry __pyx_string_tab[] = {
   {__pyx_k_file, sizeof(__pyx_k_file), 0, 1, 1}, /* PyObject cname: __pyx_n_u_file */
   {__pyx_k_file_path, sizeof(__pyx_k_file_path), 0, 1, 1}, /* PyObject cname: __pyx_n_u_file_path */
   {__pyx_k_filename, sizeof(__pyx_k_filename), 0, 1, 1}, /* PyObject cname: __pyx_n_u_filename */
+  {__pyx_k_format, sizeof(__pyx_k_format), 0, 1, 1}, /* PyObject cname: __pyx_n_u_format */
   {__pyx_k_func, sizeof(__pyx_k_func), 0, 1, 1}, /* PyObject cname: __pyx_n_u_func */
   {__pyx_k_get_log_filename, sizeof(__pyx_k_get_log_filename), 0, 1, 1}, /* PyObject cname: __pyx_n_u_get_log_filename */
   {__pyx_k_getenv, sizeof(__pyx_k_getenv), 0, 1, 1}, /* PyObject cname: __pyx_n_u_getenv */
@@ -12676,6 +13656,8 @@ static const __Pyx_StringTabEntry __pyx_string_tab[] = {
   {__pyx_k_inPython, sizeof(__pyx_k_inPython), 0, 1, 1}, /* PyObject cname: __pyx_n_u_inPython */
   {__pyx_k_init, sizeof(__pyx_k_init), 0, 1, 1}, /* PyObject cname: __pyx_n_u_init */
   {__pyx_k_initializing, sizeof(__pyx_k_initializing), 0, 1, 1}, /* PyObject cname: __pyx_n_u_initializing */
+  {__pyx_k_io, sizeof(__pyx_k_io), 0, 1, 1}, /* PyObject cname: __pyx_n_u_io */
+  {__pyx_k_io_open, sizeof(__pyx_k_io_open), 0, 1, 1}, /* PyObject cname: __pyx_n_u_io_open */
   {__pyx_k_isDebug, sizeof(__pyx_k_isDebug), 0, 1, 1}, /* PyObject cname: __pyx_n_u_isDebug */
   {__pyx_k_is_coroutine, sizeof(__pyx_k_is_coroutine), 0, 1, 1}, /* PyObject cname: __pyx_n_u_is_coroutine */
   {__pyx_k_is_debug, sizeof(__pyx_k_is_debug), 0, 1, 1}, /* PyObject cname: __pyx_n_u_is_debug */
@@ -12710,14 +13692,15 @@ static const __Pyx_StringTabEntry __pyx_string_tab[] = {
   {__pyx_k_n, sizeof(__pyx_k_n), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_n */
   {__pyx_k_name, sizeof(__pyx_k_name), 0, 1, 1}, /* PyObject cname: __pyx_n_u_name */
   {__pyx_k_name_2, sizeof(__pyx_k_name_2), 0, 1, 1}, /* PyObject cname: __pyx_n_u_name_2 */
+  {__pyx_k_name_decoded, sizeof(__pyx_k_name_decoded), 0, 1, 1}, /* PyObject cname: __pyx_n_u_name_decoded */
   {__pyx_k_new_path, sizeof(__pyx_k_new_path), 0, 1, 1}, /* PyObject cname: __pyx_n_u_new_path */
+  {__pyx_k_new_path_decoded, sizeof(__pyx_k_new_path_decoded), 0, 1, 1}, /* PyObject cname: __pyx_n_u_new_path_decoded */
   {__pyx_k_now, sizeof(__pyx_k_now), 0, 1, 1}, /* PyObject cname: __pyx_n_u_now */
   {__pyx_k_old_logfile_path, sizeof(__pyx_k_old_logfile_path), 0, 1, 1}, /* PyObject cname: __pyx_n_u_old_logfile_path */
   {__pyx_k_open, sizeof(__pyx_k_open), 0, 1, 1}, /* PyObject cname: __pyx_n_u_open */
   {__pyx_k_os, sizeof(__pyx_k_os), 0, 1, 1}, /* PyObject cname: __pyx_n_u_os */
   {__pyx_k_path, sizeof(__pyx_k_path), 0, 1, 1}, /* PyObject cname: __pyx_n_u_path */
-  {__pyx_k_pid, sizeof(__pyx_k_pid), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_pid */
-  {__pyx_k_pid_2, sizeof(__pyx_k_pid_2), 0, 1, 1}, /* PyObject cname: __pyx_n_u_pid_2 */
+  {__pyx_k_pid, sizeof(__pyx_k_pid), 0, 1, 1}, /* PyObject cname: __pyx_n_u_pid */
   {__pyx_k_pop, sizeof(__pyx_k_pop), 0, 1, 1}, /* PyObject cname: __pyx_n_u_pop */
   {__pyx_k_prepare, sizeof(__pyx_k_prepare), 0, 1, 1}, /* PyObject cname: __pyx_n_u_prepare */
   {__pyx_k_print, sizeof(__pyx_k_print), 0, 1, 1}, /* PyObject cname: __pyx_n_u_print */
@@ -12727,7 +13710,6 @@ static const __Pyx_StringTabEntry __pyx_string_tab[] = {
   {__pyx_k_re, sizeof(__pyx_k_re), 0, 1, 1}, /* PyObject cname: __pyx_n_u_re */
   {__pyx_k_remove, sizeof(__pyx_k_remove), 0, 1, 1}, /* PyObject cname: __pyx_n_u_remove */
   {__pyx_k_remove_old_logs, sizeof(__pyx_k_remove_old_logs), 0, 1, 1}, /* PyObject cname: __pyx_n_u_remove_old_logs */
-  {__pyx_k_return, sizeof(__pyx_k_return), 0, 1, 1}, /* PyObject cname: __pyx_n_u_return */
   {__pyx_k_returncode, sizeof(__pyx_k_returncode), 0, 1, 1}, /* PyObject cname: __pyx_n_u_returncode */
   {__pyx_k_self, sizeof(__pyx_k_self), 0, 1, 1}, /* PyObject cname: __pyx_n_u_self */
   {__pyx_k_set_base_dir, sizeof(__pyx_k_set_base_dir), 0, 1, 1}, /* PyObject cname: __pyx_n_u_set_base_dir */
@@ -12759,11 +13741,12 @@ static const __Pyx_StringTabEntry __pyx_string_tab[] = {
   {__pyx_k_true, sizeof(__pyx_k_true), 0, 1, 1}, /* PyObject cname: __pyx_n_u_true */
   {__pyx_k_upper, sizeof(__pyx_k_upper), 0, 1, 1}, /* PyObject cname: __pyx_n_u_upper */
   {__pyx_k_utf_8, sizeof(__pyx_k_utf_8), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_utf_8 */
-  {__pyx_k_v, sizeof(__pyx_k_v), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_v */
   {__pyx_k_value, sizeof(__pyx_k_value), 0, 1, 1}, /* PyObject cname: __pyx_n_u_value */
-  {__pyx_k_var, sizeof(__pyx_k_var), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_var */
-  {__pyx_k_var_log, sizeof(__pyx_k_var_log), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_var_log */
+  {__pyx_k_var_0, sizeof(__pyx_k_var_0), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_var_0 */
+  {__pyx_k_var_log_0, sizeof(__pyx_k_var_log_0), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_var_log_0 */
+  {__pyx_k_version_info, sizeof(__pyx_k_version_info), 0, 1, 1}, /* PyObject cname: __pyx_n_u_version_info */
   {__pyx_k_w_gz, sizeof(__pyx_k_w_gz), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_w_gz */
+  {__pyx_k_wb, sizeof(__pyx_k_wb), 0, 1, 1}, /* PyObject cname: __pyx_n_u_wb */
   {__pyx_k_write, sizeof(__pyx_k_write), 0, 1, 1}, /* PyObject cname: __pyx_n_u_write */
   {__pyx_k_write_to_file, sizeof(__pyx_k_write_to_file), 0, 1, 1}, /* PyObject cname: __pyx_n_u_write_to_file */
   {0, 0, 0, 0, 0}
@@ -12775,14 +13758,15 @@ static int __Pyx_InitStrings(__Pyx_StringTabEntry const *t, PyObject **target, c
 
 static int __Pyx_InitCachedBuiltins(__pyx_mstatetype *__pyx_mstate) {
   CYTHON_UNUSED_VAR(__pyx_mstate);
-  __pyx_builtin_staticmethod = __Pyx_GetBuiltinName(__pyx_mstate->__pyx_n_u_staticmethod); if (!__pyx_builtin_staticmethod) __PYX_ERR(0, 33, __pyx_L1_error)
-  __pyx_builtin_NameError = __Pyx_GetBuiltinName(__pyx_mstate->__pyx_n_u_NameError); if (!__pyx_builtin_NameError) __PYX_ERR(0, 85, __pyx_L1_error)
-  __pyx_builtin_TypeError = __Pyx_GetBuiltinName(__pyx_mstate->__pyx_n_u_TypeError); if (!__pyx_builtin_TypeError) __PYX_ERR(0, 140, __pyx_L1_error)
-  __pyx_builtin_print = __Pyx_GetBuiltinName(__pyx_mstate->__pyx_n_u_print); if (!__pyx_builtin_print) __PYX_ERR(0, 221, __pyx_L1_error)
-  __pyx_builtin_open = __Pyx_GetBuiltinName(__pyx_mstate->__pyx_n_u_open); if (!__pyx_builtin_open) __PYX_ERR(0, 258, __pyx_L1_error)
-  __pyx_builtin_PermissionError = __Pyx_GetBuiltinName(__pyx_mstate->__pyx_n_u_PermissionError); if (!__pyx_builtin_PermissionError) __PYX_ERR(0, 260, __pyx_L1_error)
-  __pyx_builtin_IOError = __Pyx_GetBuiltinName(__pyx_mstate->__pyx_n_u_IOError); if (!__pyx_builtin_IOError) __PYX_ERR(0, 260, __pyx_L1_error)
-  __pyx_builtin_ValueError = __Pyx_GetBuiltinName(__pyx_mstate->__pyx_n_u_ValueError); if (!__pyx_builtin_ValueError) __PYX_ERR(0, 283, __pyx_L1_error)
+  __pyx_builtin_open = __Pyx_GetBuiltinName(__pyx_mstate->__pyx_n_u_open); if (!__pyx_builtin_open) __PYX_ERR(0, 16, __pyx_L1_error)
+  __pyx_builtin_staticmethod = __Pyx_GetBuiltinName(__pyx_mstate->__pyx_n_u_staticmethod); if (!__pyx_builtin_staticmethod) __PYX_ERR(0, 35, __pyx_L1_error)
+  __pyx_builtin_NameError = __Pyx_GetBuiltinName(__pyx_mstate->__pyx_n_u_NameError); if (!__pyx_builtin_NameError) __PYX_ERR(0, 93, __pyx_L1_error)
+  __pyx_builtin_ImportError = __Pyx_GetBuiltinName(__pyx_mstate->__pyx_n_u_ImportError); if (!__pyx_builtin_ImportError) __PYX_ERR(0, 99, __pyx_L1_error)
+  __pyx_builtin_TypeError = __Pyx_GetBuiltinName(__pyx_mstate->__pyx_n_u_TypeError); if (!__pyx_builtin_TypeError) __PYX_ERR(0, 156, __pyx_L1_error)
+  __pyx_builtin_print = __Pyx_GetBuiltinName(__pyx_mstate->__pyx_n_u_print); if (!__pyx_builtin_print) __PYX_ERR(0, 243, __pyx_L1_error)
+  __pyx_builtin_OSError = __Pyx_GetBuiltinName(__pyx_mstate->__pyx_n_u_OSError); if (!__pyx_builtin_OSError) __PYX_ERR(0, 300, __pyx_L1_error)
+  __pyx_builtin_IOError = __Pyx_GetBuiltinName(__pyx_mstate->__pyx_n_u_IOError); if (!__pyx_builtin_IOError) __PYX_ERR(0, 300, __pyx_L1_error)
+  __pyx_builtin_ValueError = __Pyx_GetBuiltinName(__pyx_mstate->__pyx_n_u_ValueError); if (!__pyx_builtin_ValueError) __PYX_ERR(0, 331, __pyx_L1_error)
   return 0;
   __pyx_L1_error:;
   return -1;
@@ -12794,82 +13778,104 @@ static int __Pyx_InitCachedConstants(__pyx_mstatetype *__pyx_mstate) {
   CYTHON_UNUSED_VAR(__pyx_mstate);
   __Pyx_RefNannySetupContext("__Pyx_InitCachedConstants", 0);
 
-  /* "ChronicleLogger.pyx":208
+  /* "ChronicleLogger.pyx":229
  *         if not hasattr(self, '__is_debug__'):
  *             self.__is_debug__ = (
  *                 os.getenv("DEBUG", "").lower() == "show" or             # <<<<<<<<<<<<<<
  *                 os.getenv("debug", "").lower() == "show"
  *             )
 */
-  __pyx_mstate_global->__pyx_tuple[0] = PyTuple_Pack(2, __pyx_mstate_global->__pyx_n_u_DEBUG, __pyx_mstate_global->__pyx_kp_u__2); if (unlikely(!__pyx_mstate_global->__pyx_tuple[0])) __PYX_ERR(0, 208, __pyx_L1_error)
+  __pyx_mstate_global->__pyx_tuple[0] = PyTuple_Pack(2, __pyx_mstate_global->__pyx_n_u_DEBUG, __pyx_mstate_global->__pyx_kp_u_); if (unlikely(!__pyx_mstate_global->__pyx_tuple[0])) __PYX_ERR(0, 229, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_mstate_global->__pyx_tuple[0]);
   __Pyx_GIVEREF(__pyx_mstate_global->__pyx_tuple[0]);
 
-  /* "ChronicleLogger.pyx":209
+  /* "ChronicleLogger.pyx":230
  *             self.__is_debug__ = (
  *                 os.getenv("DEBUG", "").lower() == "show" or
  *                 os.getenv("debug", "").lower() == "show"             # <<<<<<<<<<<<<<
  *             )
  *         return self.__is_debug__
 */
-  __pyx_mstate_global->__pyx_tuple[1] = PyTuple_Pack(2, __pyx_mstate_global->__pyx_n_u_debug, __pyx_mstate_global->__pyx_kp_u__2); if (unlikely(!__pyx_mstate_global->__pyx_tuple[1])) __PYX_ERR(0, 209, __pyx_L1_error)
+  __pyx_mstate_global->__pyx_tuple[1] = PyTuple_Pack(2, __pyx_mstate_global->__pyx_n_u_debug, __pyx_mstate_global->__pyx_kp_u_); if (unlikely(!__pyx_mstate_global->__pyx_tuple[1])) __PYX_ERR(0, 230, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_mstate_global->__pyx_tuple[1]);
   __Pyx_GIVEREF(__pyx_mstate_global->__pyx_tuple[1]);
 
-  /* "ChronicleLogger.pyx":258
- *     def _has_write_permission(self, file_path):
+  /* "ChronicleLogger.pyx":294
+ *         # Example for _has_write_permission
  *         try:
  *             with open(file_path, 'a'):             # <<<<<<<<<<<<<<
  *                 return True
- *         except (PermissionError, IOError):
+ *         except:
 */
-  __pyx_mstate_global->__pyx_tuple[2] = PyTuple_Pack(3, Py_None, Py_None, Py_None); if (unlikely(!__pyx_mstate_global->__pyx_tuple[2])) __PYX_ERR(0, 258, __pyx_L1_error)
+  __pyx_mstate_global->__pyx_tuple[2] = PyTuple_Pack(3, Py_None, Py_None, Py_None); if (unlikely(!__pyx_mstate_global->__pyx_tuple[2])) __PYX_ERR(0, 294, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_mstate_global->__pyx_tuple[2]);
   __Pyx_GIVEREF(__pyx_mstate_global->__pyx_tuple[2]);
 
-  /* "ChronicleLogger.pyx":112
+  /* "ChronicleLogger.pyx":300
+ *             if sys.version_info[0] < 3:
+ *                 exc_type, exc_value, exc_tb = sys.exc_info()
+ *                 if issubclass(exc_type, (OSError, IOError)):  # Check Py2 equivalents             # <<<<<<<<<<<<<<
+ *                     e = exc_value
+ *                     print("Permission denied for writing to {0}".format(file_path), file=sys.stderr)
+*/
+  __pyx_mstate_global->__pyx_tuple[3] = PyTuple_Pack(2, __pyx_builtin_OSError, __pyx_builtin_IOError); if (unlikely(!__pyx_mstate_global->__pyx_tuple[3])) __PYX_ERR(0, 300, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_mstate_global->__pyx_tuple[3]);
+  __Pyx_GIVEREF(__pyx_mstate_global->__pyx_tuple[3]);
+
+  /* "ChronicleLogger.pyx":306
+ *             else:
+ *                 exc_type, exc_value, exc_tb = sys.exc_info()
+ *                 if issubclass(exc_type, (OSError, IOError)):             # <<<<<<<<<<<<<<
+ *                     e = exc_value
+ *                     print("Permission denied for writing to {0}".format(file_path), file=sys.stderr)
+*/
+  __pyx_mstate_global->__pyx_tuple[4] = PyTuple_Pack(2, __pyx_builtin_OSError, __pyx_builtin_IOError); if (unlikely(!__pyx_mstate_global->__pyx_tuple[4])) __PYX_ERR(0, 306, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_mstate_global->__pyx_tuple[4]);
+  __Pyx_GIVEREF(__pyx_mstate_global->__pyx_tuple[4]);
+
+  /* "ChronicleLogger.pyx":124
  *     LOG_REMOVAL_DAYS = 30
  * 
  *     def __init__(self, logname=b"app", logdir=b"", basedir=b""):             # <<<<<<<<<<<<<<
  *         self.__logname__ = None
  *         self.__basedir__ = None
 */
-  __pyx_mstate_global->__pyx_tuple[3] = PyTuple_Pack(3, ((PyObject*)__pyx_mstate_global->__pyx_n_b_app), ((PyObject*)__pyx_mstate_global->__pyx_kp_b__2), ((PyObject*)__pyx_mstate_global->__pyx_kp_b__2)); if (unlikely(!__pyx_mstate_global->__pyx_tuple[3])) __PYX_ERR(0, 112, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_mstate_global->__pyx_tuple[3]);
-  __Pyx_GIVEREF(__pyx_mstate_global->__pyx_tuple[3]);
+  __pyx_mstate_global->__pyx_tuple[5] = PyTuple_Pack(3, ((PyObject*)__pyx_mstate_global->__pyx_n_b_app), ((PyObject*)__pyx_mstate_global->__pyx_kp_b_), ((PyObject*)__pyx_mstate_global->__pyx_kp_b_)); if (unlikely(!__pyx_mstate_global->__pyx_tuple[5])) __PYX_ERR(0, 124, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_mstate_global->__pyx_tuple[5]);
+  __Pyx_GIVEREF(__pyx_mstate_global->__pyx_tuple[5]);
 
-  /* "ChronicleLogger.pyx":154
+  /* "ChronicleLogger.pyx":171
  *         return self.__is_python__
  * 
  *     def logName(self, logname=None):             # <<<<<<<<<<<<<<
  *         if logname is not None:
  *             self.__logname__ = self.strToByte(logname)
 */
-  __pyx_mstate_global->__pyx_tuple[4] = PyTuple_Pack(1, Py_None); if (unlikely(!__pyx_mstate_global->__pyx_tuple[4])) __PYX_ERR(0, 154, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_mstate_global->__pyx_tuple[4]);
-  __Pyx_GIVEREF(__pyx_mstate_global->__pyx_tuple[4]);
+  __pyx_mstate_global->__pyx_tuple[6] = PyTuple_Pack(1, Py_None); if (unlikely(!__pyx_mstate_global->__pyx_tuple[6])) __PYX_ERR(0, 171, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_mstate_global->__pyx_tuple[6]);
+  __Pyx_GIVEREF(__pyx_mstate_global->__pyx_tuple[6]);
 
-  /* "ChronicleLogger.pyx":164
- *             return self.__logname__.decode()
+  /* "ChronicleLogger.pyx":181
+ *             return self.__logname__.decode('utf-8')  # NEW: Explicit decode
  * 
  *     def __set_base_dir__(self, basedir=b""):             # <<<<<<<<<<<<<<
  *         basedir_str = self.byteToStr(basedir)
- *         if not basedir_str:
+ *         if not basedir_str or basedir_str=='':
 */
-  __pyx_mstate_global->__pyx_tuple[5] = PyTuple_Pack(1, ((PyObject*)__pyx_mstate_global->__pyx_kp_b__2)); if (unlikely(!__pyx_mstate_global->__pyx_tuple[5])) __PYX_ERR(0, 164, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_mstate_global->__pyx_tuple[5]);
-  __Pyx_GIVEREF(__pyx_mstate_global->__pyx_tuple[5]);
+  __pyx_mstate_global->__pyx_tuple[7] = PyTuple_Pack(1, ((PyObject*)__pyx_mstate_global->__pyx_kp_b_)); if (unlikely(!__pyx_mstate_global->__pyx_tuple[7])) __PYX_ERR(0, 181, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_mstate_global->__pyx_tuple[7]);
+  __Pyx_GIVEREF(__pyx_mstate_global->__pyx_tuple[7]);
 
-  /* "ChronicleLogger.pyx":230
- *         return ctypes.c_char_p(filename.encode()).value
+  /* "ChronicleLogger.pyx":262
+ *         return ctypes.c_char_p(filename.encode('utf-8')).value
  * 
  *     def log_message(self, message, level=b"INFO", component=b""):             # <<<<<<<<<<<<<<
  *         pid = os.getpid()
  *         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 */
-  __pyx_mstate_global->__pyx_tuple[6] = PyTuple_Pack(2, ((PyObject*)__pyx_mstate_global->__pyx_n_b_INFO), ((PyObject*)__pyx_mstate_global->__pyx_kp_b__2)); if (unlikely(!__pyx_mstate_global->__pyx_tuple[6])) __PYX_ERR(0, 230, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_mstate_global->__pyx_tuple[6]);
-  __Pyx_GIVEREF(__pyx_mstate_global->__pyx_tuple[6]);
+  __pyx_mstate_global->__pyx_tuple[8] = PyTuple_Pack(2, ((PyObject*)__pyx_mstate_global->__pyx_n_b_INFO), ((PyObject*)__pyx_mstate_global->__pyx_kp_b_)); if (unlikely(!__pyx_mstate_global->__pyx_tuple[8])) __PYX_ERR(0, 262, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_mstate_global->__pyx_tuple[8]);
+  __Pyx_GIVEREF(__pyx_mstate_global->__pyx_tuple[8]);
   __Pyx_RefNannyFinishContext();
   return 0;
   __pyx_L1_error:;
@@ -12887,6 +13893,7 @@ static int __Pyx_InitConstants(__pyx_mstatetype *__pyx_mstate) {
   if (__Pyx_InitStrings(__pyx_string_tab, __pyx_mstate->__pyx_string_tab, __pyx_string_tab_encodings) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
   __pyx_mstate->__pyx_int_0 = PyLong_FromLong(0); if (unlikely(!__pyx_mstate->__pyx_int_0)) __PYX_ERR(0, 1, __pyx_L1_error)
   __pyx_mstate->__pyx_int_1 = PyLong_FromLong(1); if (unlikely(!__pyx_mstate->__pyx_int_1)) __PYX_ERR(0, 1, __pyx_L1_error)
+  __pyx_mstate->__pyx_int_3 = PyLong_FromLong(3); if (unlikely(!__pyx_mstate->__pyx_int_3)) __PYX_ERR(0, 1, __pyx_L1_error)
   __pyx_mstate->__pyx_int_5 = PyLong_FromLong(5); if (unlikely(!__pyx_mstate->__pyx_int_5)) __PYX_ERR(0, 1, __pyx_L1_error)
   __pyx_mstate->__pyx_int_7 = PyLong_FromLong(7); if (unlikely(!__pyx_mstate->__pyx_int_7)) __PYX_ERR(0, 1, __pyx_L1_error)
   __pyx_mstate->__pyx_int_30 = PyLong_FromLong(30); if (unlikely(!__pyx_mstate->__pyx_int_30)) __PYX_ERR(0, 1, __pyx_L1_error)
@@ -12920,123 +13927,123 @@ static int __Pyx_CreateCodeObjects(__pyx_mstatetype *__pyx_mstate) {
   PyObject* tuple_dedup_map = PyDict_New();
   if (unlikely(!tuple_dedup_map)) return -1;
   {
-    const __Pyx_PyCode_New_function_description descr = {0, 0, 0, 0, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 33, 31};
+    const __Pyx_PyCode_New_function_description descr = {0, 0, 0, 0, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 35, 19};
     PyObject* const varnames[] = {0};
-    __pyx_mstate_global->__pyx_codeobj_tab[0] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_class_version, __pyx_k_A_r_WN_1B_IZZaab, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[0])) goto bad;
+    __pyx_mstate_global->__pyx_codeobj_tab[0] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_class_version, __pyx_k_A_UU, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[0])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {0, 0, 0, 0, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 38, 38};
+    const __Pyx_PyCode_New_function_description descr = {0, 0, 0, 0, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 41, 37};
     PyObject* const varnames[] = {0};
     __pyx_mstate_global->__pyx_codeobj_tab[1] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_is_root_2, __pyx_k_A_7_Cq_r_Cq_wa, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[1])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {0, 0, 0, 1, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 45, 123};
+    const __Pyx_PyCode_New_function_description descr = {0, 0, 0, 1, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 48, 160};
     PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_proc};
-    __pyx_mstate_global->__pyx_codeobj_tab[2] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_can_sudo_without_password, __pyx_k_A_7_gQ_7_7_1_5_q_a_q_q_AXQ_A_wa, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[2])) goto bad;
+    __pyx_mstate_global->__pyx_codeobj_tab[2] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_can_sudo_without_password, __pyx_k_A_7_gQ_7_7_1_5_q_a_q_q_s_q_3b_C, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[2])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {0, 0, 0, 0, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 69, 25};
+    const __Pyx_PyCode_New_function_description descr = {0, 0, 0, 0, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 76, 24};
     PyObject* const varnames[] = {0};
-    __pyx_mstate_global->__pyx_codeobj_tab[3] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_should_use_system_paths, __pyx_k_A_whc_G_EQ, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[3])) goto bad;
+    __pyx_mstate_global->__pyx_codeobj_tab[3] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_should_use_system_paths, __pyx_k_A_whc_T_0J, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[3])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {4, 0, 0, 4, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 112, 166};
+    const __Pyx_PyCode_New_function_description descr = {4, 0, 0, 4, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 124, 168};
     PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_logname, __pyx_mstate->__pyx_n_u_logdir, __pyx_mstate->__pyx_n_u_basedir};
     __pyx_mstate_global->__pyx_codeobj_tab[4] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_init, __pyx_k_1_O1_O1_N_F_1A_Q_4xs_e1_HAQ_1_q, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[4])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {2, 0, 0, 2, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 135, 64};
+    const __Pyx_PyCode_New_function_description descr = {2, 0, 0, 2, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 150, 68};
     PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_value};
-    __pyx_mstate_global->__pyx_codeobj_tab[5] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_strToByte, __pyx_k_A_QgQ_5_q_3e3j_1_iq_4q_a, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[5])) goto bad;
+    __pyx_mstate_global->__pyx_codeobj_tab[5] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_strToByte, __pyx_k_A_QgQ_5_q_3e3j_1_iq_avQ, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[5])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {2, 0, 0, 2, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 142, 64};
+    const __Pyx_PyCode_New_function_description descr = {2, 0, 0, 2, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 158, 68};
     PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_value};
-    __pyx_mstate_global->__pyx_codeobj_tab[6] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_byteToStr, __pyx_k_A_6_E_Jawa_1_q_q_5_q_iq_4q_a, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[6])) goto bad;
+    __pyx_mstate_global->__pyx_codeobj_tab[6] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_byteToStr, __pyx_k_A_6_E_Jawa_1_q_q_5_q_iq_avQ, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[6])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {1, 0, 0, 1, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 149, 38};
+    const __Pyx_PyCode_New_function_description descr = {1, 0, 0, 1, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 166, 38};
     PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self};
     __pyx_mstate_global->__pyx_codeobj_tab[7] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_inPython, __pyx_k_A_4_c_S_6_t1, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[7])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {2, 0, 0, 3, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 154, 89};
+    const __Pyx_PyCode_New_function_description descr = {2, 0, 0, 3, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 171, 95};
     PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_logname, __pyx_mstate->__pyx_n_u_name_2};
-    __pyx_mstate_global->__pyx_codeobj_tab[8] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_logName, __pyx_k_a_87_t_Qa_t9A_t_wa_r_Q_2_uF_O4w, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[8])) goto bad;
+    __pyx_mstate_global->__pyx_codeobj_tab[8] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_logName, __pyx_k_a_87_t_Qa_t9A_t_waq_r_Q_2_uF_O4, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[8])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {2, 0, 0, 6, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 164, 99};
+    const __Pyx_PyCode_New_function_description descr = {2, 0, 0, 6, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 181, 113};
     PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_basedir, __pyx_mstate->__pyx_n_u_basedir_str, __pyx_mstate->__pyx_n_u_appname, __pyx_mstate->__pyx_n_u_path, __pyx_mstate->__pyx_n_u_home};
-    __pyx_mstate_global->__pyx_codeobj_tab[9] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_set_base_dir, __pyx_k_q_d_AQ_4q_d_gQ_w_a_r_r_k_r_e1F, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[9])) goto bad;
+    __pyx_mstate_global->__pyx_codeobj_tab[9] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_set_base_dir, __pyx_k_q_d_AQ_4_3k_1_d_gQa_w_a_z_r_k_r, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[9])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {2, 0, 0, 2, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 177, 50};
+    const __Pyx_PyCode_New_function_description descr = {2, 0, 0, 2, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 196, 50};
     PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_basedir};
     __pyx_mstate_global->__pyx_codeobj_tab[10] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_baseDir, __pyx_k_a_87_t_1_Q_4q, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[10])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {2, 0, 0, 5, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 185, 96};
+    const __Pyx_PyCode_New_function_description descr = {2, 0, 0, 5, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 204, 111};
     PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_logdir, __pyx_mstate->__pyx_n_u_logdir_str, __pyx_mstate->__pyx_n_u_appname, __pyx_mstate->__pyx_n_u_home};
-    __pyx_mstate_global->__pyx_codeobj_tab[11] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_set_log_dir, __pyx_k_a_T_1A_1_a_d_gQ_w_a_N_M_r_k_N_E, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[11])) goto bad;
+    __pyx_mstate_global->__pyx_codeobj_tab[11] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_set_log_dir, __pyx_k_a_T_1A_d_Ba_a_d_gQa_w_a_N_q_r_k, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[11])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {2, 0, 0, 2, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 197, 50};
+    const __Pyx_PyCode_New_function_description descr = {2, 0, 0, 2, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 218, 50};
     PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_logdir};
     __pyx_mstate_global->__pyx_codeobj_tab[12] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_logDir, __pyx_k_Q_7_t_s_A_4q, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[12])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {1, 0, 0, 1, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 205, 67};
+    const __Pyx_PyCode_New_function_description descr = {1, 0, 0, 1, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 226, 67};
     PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self};
     __pyx_mstate_global->__pyx_codeobj_tab[13] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_isDebug, __pyx_k_A_4wavQ_3fCs_3fCs_t1, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[13])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {0, 0, 0, 0, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 213, 38};
+    const __Pyx_PyCode_New_function_description descr = {0, 0, 0, 0, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 234, 19};
     PyObject* const varnames[] = {0};
-    __pyx_mstate_global->__pyx_codeobj_tab[14] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_class_version, __pyx_k_A_r__N_ARRaar_s_B_B_C, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[14])) goto bad;
+    __pyx_mstate_global->__pyx_codeobj_tab[14] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_class_version, __pyx_k_A_UU_2, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[14])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {2, 0, 0, 3, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 217, 74};
-    PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_dir_path, __pyx_mstate->__pyx_n_u_e};
-    __pyx_mstate_global->__pyx_codeobj_tab[15] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_ensure_directory_exists, __pyx_k_A_9D_Be7_1_1A_Qb_q_L_B_bPVVW, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[15])) goto bad;
+    const __Pyx_PyCode_New_function_description descr = {2, 0, 0, 6, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 239, 107};
+    PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_dir_path, __pyx_mstate->__pyx_n_u_exc_type, __pyx_mstate->__pyx_n_u_exc_value, __pyx_mstate->__pyx_n_u_exc_tb, __pyx_mstate->__pyx_n_u_e};
+    __pyx_mstate_global->__pyx_codeobj_tab[15] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_ensure_directory_exists, __pyx_k_A_iq_s_q_2Q_Yc_A_Yc_A_A_B_TXX, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[15])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {1, 0, 0, 3, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 225, 55};
-    PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_date_str, __pyx_mstate->__pyx_n_u_filename};
-    __pyx_mstate_global->__pyx_codeobj_tab[16] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_get_log_filename, __pyx_k_A_84r_1_2T_4_7_q_vYaxwc, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[16])) goto bad;
+    const __Pyx_PyCode_New_function_description descr = {1, 0, 0, 5, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 254, 95};
+    PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_date_str, __pyx_mstate->__pyx_n_u_dir_decoded, __pyx_mstate->__pyx_n_u_name_decoded, __pyx_mstate->__pyx_n_u_filename};
+    __pyx_mstate_global->__pyx_codeobj_tab[16] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_get_log_filename, __pyx_k_A_84r_1_d_WA_1D_Uaaeef_t_waq_G1M, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[16])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {4, 0, 0, 12, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 230, 234};
-    PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_message, __pyx_mstate->__pyx_n_u_level, __pyx_mstate->__pyx_n_u_component, __pyx_mstate->__pyx_n_u_pid_2, __pyx_mstate->__pyx_n_u_timestamp, __pyx_mstate->__pyx_n_u_component_str, __pyx_mstate->__pyx_n_u_message_str, __pyx_mstate->__pyx_n_u_level_str, __pyx_mstate->__pyx_n_u_log_entry, __pyx_mstate->__pyx_n_u_new_path, __pyx_mstate->__pyx_n_u_header};
-    __pyx_mstate_global->__pyx_codeobj_tab[17] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_log_message, __pyx_k_b_q_HD_1A_Ja_O1_d_AQ_D_6_q_Be_G, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[17])) goto bad;
+    const __Pyx_PyCode_New_function_description descr = {4, 0, 0, 13, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 262, 261};
+    PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_message, __pyx_mstate->__pyx_n_u_level, __pyx_mstate->__pyx_n_u_component, __pyx_mstate->__pyx_n_u_pid, __pyx_mstate->__pyx_n_u_timestamp, __pyx_mstate->__pyx_n_u_component_str, __pyx_mstate->__pyx_n_u_message_str, __pyx_mstate->__pyx_n_u_level_str, __pyx_mstate->__pyx_n_u_log_entry, __pyx_mstate->__pyx_n_u_new_path, __pyx_mstate->__pyx_n_u_new_path_decoded, __pyx_mstate->__pyx_n_u_header};
+    __pyx_mstate_global->__pyx_codeobj_tab[17] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_log_message, __pyx_k_b_q_HD_1A_wat_Qo_TU_d_AQ_D_6_q, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[17])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {2, 0, 0, 2, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 256, 47};
-    PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_file_path};
-    __pyx_mstate_global->__pyx_codeobj_tab[18] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_has_write_permission, __pyx_k_A_Qk_q_9_5_1_1, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[18])) goto bad;
+    const __Pyx_PyCode_New_function_description descr = {2, 0, 0, 6, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 291, 154};
+    PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_file_path, __pyx_mstate->__pyx_n_u_exc_type, __pyx_mstate->__pyx_n_u_exc_value, __pyx_mstate->__pyx_n_u_exc_tb, __pyx_mstate->__pyx_n_u_e};
+    __pyx_mstate_global->__pyx_codeobj_tab[18] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_has_write_permission, __pyx_k_A_Qk_q_s_q_2Q_Yc_Qk_q_TYY_1_Yc_Q, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[18])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {2, 0, 0, 3, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 264, 29};
+    const __Pyx_PyCode_New_function_description descr = {2, 0, 0, 3, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 311, 29};
     PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_log_entry, __pyx_mstate->__pyx_n_u_f};
-    __pyx_mstate_global->__pyx_codeobj_tab[19] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_write_to_file, __pyx_k_A_1_i_1_V1A, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[19])) goto bad;
+    __pyx_mstate_global->__pyx_codeobj_tab[19] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_write_to_file, __pyx_k_A_AT_4E_a_V1A, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[19])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {1, 0, 0, 1, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 268, 52};
+    const __Pyx_PyCode_New_function_description descr = {1, 0, 0, 1, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 316, 52};
     PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self};
     __pyx_mstate_global->__pyx_codeobj_tab[20] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_log_rotation, __pyx_k_A_4r_gQd_s_b_Q_Q_A, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[20])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {1, 0, 0, 5, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 274, 133};
-    PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_file, __pyx_mstate->__pyx_n_u_date_part, __pyx_mstate->__pyx_n_u_log_date, __pyx_mstate->__pyx_n_u_e};
+    const __Pyx_PyCode_New_function_description descr = {1, 0, 0, 8, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 322, 149};
+    PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_file, __pyx_mstate->__pyx_n_u_date_part, __pyx_mstate->__pyx_n_u_log_date, __pyx_mstate->__pyx_n_u_exc_type, __pyx_mstate->__pyx_n_u_exc_value, __pyx_mstate->__pyx_n_u_exc_tb, __pyx_mstate->__pyx_n_u_e};
     __pyx_mstate_global->__pyx_codeobj_tab[21] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_archive_old_logs, __pyx_k_A_4q_4y_F_4r_6_aq_89A_HD_2YfBd_Q, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[21])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {2, 0, 0, 6, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 288, 105};
-    PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_filename, __pyx_mstate->__pyx_n_u_log_path, __pyx_mstate->__pyx_n_u_archive_path, __pyx_mstate->__pyx_n_u_tar, __pyx_mstate->__pyx_n_u_e};
-    __pyx_mstate_global->__pyx_codeobj_tab[22] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_archive_log, __pyx_k_A_2U_q_M_y_QnKq_4q_gQa_1_A_Be3a, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[22])) goto bad;
+    const __Pyx_PyCode_New_function_description descr = {2, 0, 0, 9, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 341, 123};
+    PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_filename, __pyx_mstate->__pyx_n_u_log_path, __pyx_mstate->__pyx_n_u_archive_path, __pyx_mstate->__pyx_n_u_tar, __pyx_mstate->__pyx_n_u_exc_type, __pyx_mstate->__pyx_n_u_exc_value, __pyx_mstate->__pyx_n_u_exc_tb, __pyx_mstate->__pyx_n_u_e};
+    __pyx_mstate_global->__pyx_codeobj_tab[22] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_archive_log, __pyx_k_A_2U_q_M_y_QnKq_4q_gQa_k_Ya_Q_q, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[22])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {1, 0, 0, 5, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 299, 145};
-    PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_file, __pyx_mstate->__pyx_n_u_date_part, __pyx_mstate->__pyx_n_u_log_date, __pyx_mstate->__pyx_n_u_e};
+    const __Pyx_PyCode_New_function_description descr = {1, 0, 0, 8, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 357, 161};
+    PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_file, __pyx_mstate->__pyx_n_u_date_part, __pyx_mstate->__pyx_n_u_log_date, __pyx_mstate->__pyx_n_u_exc_type, __pyx_mstate->__pyx_n_u_exc_value, __pyx_mstate->__pyx_n_u_exc_tb, __pyx_mstate->__pyx_n_u_e};
     __pyx_mstate_global->__pyx_codeobj_tab[23] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_src_ChronicleLogger_pyx, __pyx_mstate->__pyx_n_u_remove_old_logs, __pyx_k_A_4q_4y_F_4r_6_aq_89A_HD_2YfBd_g, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[23])) goto bad;
   }
   Py_DECREF(tuple_dedup_map);
@@ -13556,83 +14563,18 @@ static CYTHON_INLINE PyObject *__Pyx__GetModuleGlobalName(PyObject *name)
     return __Pyx_GetBuiltinName(name);
 }
 
-/* JoinPyUnicode */
-static PyObject* __Pyx_PyUnicode_Join(PyObject** values, Py_ssize_t value_count, Py_ssize_t result_ulength,
-                                      Py_UCS4 max_char) {
-#if CYTHON_USE_UNICODE_INTERNALS && CYTHON_ASSUME_SAFE_MACROS && !CYTHON_AVOID_BORROWED_REFS
-    PyObject *result_uval;
-    int result_ukind, kind_shift;
-    Py_ssize_t i, char_pos;
-    void *result_udata;
-    if (max_char > 1114111) max_char = 1114111;
-    result_uval = PyUnicode_New(result_ulength, max_char);
-    if (unlikely(!result_uval)) return NULL;
-    result_ukind = (max_char <= 255) ? PyUnicode_1BYTE_KIND : (max_char <= 65535) ? PyUnicode_2BYTE_KIND : PyUnicode_4BYTE_KIND;
-    kind_shift = (result_ukind == PyUnicode_4BYTE_KIND) ? 2 : result_ukind - 1;
-    result_udata = PyUnicode_DATA(result_uval);
-    assert(kind_shift == 2 || kind_shift == 1 || kind_shift == 0);
-    if (unlikely((PY_SSIZE_T_MAX >> kind_shift) - result_ulength < 0))
-        goto overflow;
-    char_pos = 0;
-    for (i=0; i < value_count; i++) {
-        int ukind;
-        Py_ssize_t ulength;
-        void *udata;
-        PyObject *uval = values[i];
-        #if !CYTHON_COMPILING_IN_LIMITED_API
-        if (__Pyx_PyUnicode_READY(uval) == (-1))
-            goto bad;
-        #endif
-        ulength = __Pyx_PyUnicode_GET_LENGTH(uval);
-        #if !CYTHON_ASSUME_SAFE_SIZE
-        if (unlikely(ulength < 0)) goto bad;
-        #endif
-        if (unlikely(!ulength))
-            continue;
-        if (unlikely((PY_SSIZE_T_MAX >> kind_shift) - ulength < char_pos))
-            goto overflow;
-        ukind = __Pyx_PyUnicode_KIND(uval);
-        udata = __Pyx_PyUnicode_DATA(uval);
-        if (ukind == result_ukind) {
-            memcpy((char *)result_udata + (char_pos << kind_shift), udata, (size_t) (ulength << kind_shift));
-        } else {
-            #if PY_VERSION_HEX >= 0x030d0000
-            if (unlikely(PyUnicode_CopyCharacters(result_uval, char_pos, uval, 0, ulength) < 0)) goto bad;
-            #elif CYTHON_COMPILING_IN_CPYTHON || defined(_PyUnicode_FastCopyCharacters)
-            _PyUnicode_FastCopyCharacters(result_uval, char_pos, uval, 0, ulength);
-            #else
-            Py_ssize_t j;
-            for (j=0; j < ulength; j++) {
-                Py_UCS4 uchar = __Pyx_PyUnicode_READ(ukind, udata, j);
-                __Pyx_PyUnicode_WRITE(result_ukind, result_udata, char_pos+j, uchar);
-            }
-            #endif
-        }
-        char_pos += ulength;
-    }
-    return result_uval;
-overflow:
-    PyErr_SetString(PyExc_OverflowError, "join() result is too long for a Python string");
-bad:
-    Py_DECREF(result_uval);
-    return NULL;
-#else
-    Py_ssize_t i;
-    PyObject *result = NULL;
-    PyObject *value_tuple = PyTuple_New(value_count);
-    if (unlikely(!value_tuple)) return NULL;
-    CYTHON_UNUSED_VAR(max_char);
-    CYTHON_UNUSED_VAR(result_ulength);
-    for (i=0; i<value_count; i++) {
-        if (__Pyx_PyTuple_SET_ITEM(value_tuple, i, values[i]) != (0)) goto bad;
-        Py_INCREF(values[i]);
-    }
-    result = PyUnicode_Join(__pyx_mstate_global->__pyx_empty_unicode, value_tuple);
-bad:
-    Py_DECREF(value_tuple);
+/* PyObjectFastCallMethod */
+#if !CYTHON_VECTORCALL || PY_VERSION_HEX < 0x03090000
+static PyObject *__Pyx_PyObject_FastCallMethod(PyObject *name, PyObject *const *args, size_t nargsf) {
+    PyObject *result;
+    PyObject *attr = PyObject_GetAttr(args[0], name);
+    if (unlikely(!attr))
+        return NULL;
+    result = __Pyx_PyObject_FastCall(attr, args+1, nargsf - 1);
+    Py_DECREF(attr);
     return result;
-#endif
 }
+#endif
 
 /* PyLongCompare */
 static CYTHON_INLINE PyObject* __Pyx_PyLong_EqObjC(PyObject *op1, PyObject *op2, long intval, long inplace) {
@@ -13979,6 +14921,99 @@ CYTHON_UNUSED static int __Pyx_VectorcallBuilder_AddArg_Check(PyObject *key, PyO
     return PyDict_SetItem(builder, key, value);
 }
 #endif
+
+/* GetItemInt */
+static PyObject *__Pyx_GetItemInt_Generic(PyObject *o, PyObject* j) {
+    PyObject *r;
+    if (unlikely(!j)) return NULL;
+    r = PyObject_GetItem(o, j);
+    Py_DECREF(j);
+    return r;
+}
+static CYTHON_INLINE PyObject *__Pyx_GetItemInt_List_Fast(PyObject *o, Py_ssize_t i,
+                                                              CYTHON_NCP_UNUSED int wraparound,
+                                                              CYTHON_NCP_UNUSED int boundscheck) {
+#if CYTHON_ASSUME_SAFE_MACROS && CYTHON_ASSUME_SAFE_SIZE && !CYTHON_AVOID_BORROWED_REFS && !CYTHON_AVOID_THREAD_UNSAFE_BORROWED_REFS
+    Py_ssize_t wrapped_i = i;
+    if (wraparound & unlikely(i < 0)) {
+        wrapped_i += PyList_GET_SIZE(o);
+    }
+    if ((!boundscheck) || likely(__Pyx_is_valid_index(wrapped_i, PyList_GET_SIZE(o)))) {
+        PyObject *r = PyList_GET_ITEM(o, wrapped_i);
+        Py_INCREF(r);
+        return r;
+    }
+    return __Pyx_GetItemInt_Generic(o, PyLong_FromSsize_t(i));
+#else
+    return PySequence_GetItem(o, i);
+#endif
+}
+static CYTHON_INLINE PyObject *__Pyx_GetItemInt_Tuple_Fast(PyObject *o, Py_ssize_t i,
+                                                              CYTHON_NCP_UNUSED int wraparound,
+                                                              CYTHON_NCP_UNUSED int boundscheck) {
+#if CYTHON_ASSUME_SAFE_MACROS && CYTHON_ASSUME_SAFE_SIZE && !CYTHON_AVOID_BORROWED_REFS
+    Py_ssize_t wrapped_i = i;
+    if (wraparound & unlikely(i < 0)) {
+        wrapped_i += PyTuple_GET_SIZE(o);
+    }
+    if ((!boundscheck) || likely(__Pyx_is_valid_index(wrapped_i, PyTuple_GET_SIZE(o)))) {
+        PyObject *r = PyTuple_GET_ITEM(o, wrapped_i);
+        Py_INCREF(r);
+        return r;
+    }
+    return __Pyx_GetItemInt_Generic(o, PyLong_FromSsize_t(i));
+#else
+    return PySequence_GetItem(o, i);
+#endif
+}
+static CYTHON_INLINE PyObject *__Pyx_GetItemInt_Fast(PyObject *o, Py_ssize_t i, int is_list,
+                                                     CYTHON_NCP_UNUSED int wraparound,
+                                                     CYTHON_NCP_UNUSED int boundscheck) {
+#if CYTHON_ASSUME_SAFE_MACROS && CYTHON_ASSUME_SAFE_SIZE && !CYTHON_AVOID_BORROWED_REFS && CYTHON_USE_TYPE_SLOTS
+    if (is_list || PyList_CheckExact(o)) {
+        Py_ssize_t n = ((!wraparound) | likely(i >= 0)) ? i : i + PyList_GET_SIZE(o);
+        if ((!boundscheck) || (likely(__Pyx_is_valid_index(n, PyList_GET_SIZE(o))))) {
+            return __Pyx_PyList_GetItemRef(o, n);
+        }
+    }
+    else if (PyTuple_CheckExact(o)) {
+        Py_ssize_t n = ((!wraparound) | likely(i >= 0)) ? i : i + PyTuple_GET_SIZE(o);
+        if ((!boundscheck) || likely(__Pyx_is_valid_index(n, PyTuple_GET_SIZE(o)))) {
+            PyObject *r = PyTuple_GET_ITEM(o, n);
+            Py_INCREF(r);
+            return r;
+        }
+    } else {
+        PyMappingMethods *mm = Py_TYPE(o)->tp_as_mapping;
+        PySequenceMethods *sm = Py_TYPE(o)->tp_as_sequence;
+        if (mm && mm->mp_subscript) {
+            PyObject *r, *key = PyLong_FromSsize_t(i);
+            if (unlikely(!key)) return NULL;
+            r = mm->mp_subscript(o, key);
+            Py_DECREF(key);
+            return r;
+        }
+        if (likely(sm && sm->sq_item)) {
+            if (wraparound && unlikely(i < 0) && likely(sm->sq_length)) {
+                Py_ssize_t l = sm->sq_length(o);
+                if (likely(l >= 0)) {
+                    i += l;
+                } else {
+                    if (!PyErr_ExceptionMatches(PyExc_OverflowError))
+                        return NULL;
+                    PyErr_Clear();
+                }
+            }
+            return sm->sq_item(o, i);
+        }
+    }
+#else
+    if (is_list || !PyMapping_Check(o)) {
+        return PySequence_GetItem(o, i);
+    }
+#endif
+    return __Pyx_GetItemInt_Generic(o, PyLong_FromSsize_t(i));
+}
 
 /* PyObjectVectorCallMethodKwBuilder */
 #if !CYTHON_VECTORCALL || PY_VERSION_HEX < 0x03090000
@@ -14727,19 +15762,6 @@ static void __Pyx_RaiseArgtupleInvalid(
                  (num_expected == 1) ? "" : "s", num_found);
 }
 
-/* PyObjectFastCallMethod */
-#if !CYTHON_VECTORCALL || PY_VERSION_HEX < 0x03090000
-static PyObject *__Pyx_PyObject_FastCallMethod(PyObject *name, PyObject *const *args, size_t nargsf) {
-    PyObject *result;
-    PyObject *attr = PyObject_GetAttr(args[0], name);
-    if (unlikely(!attr))
-        return NULL;
-    result = __Pyx_PyObject_FastCall(attr, args+1, nargsf - 1);
-    Py_DECREF(attr);
-    return result;
-}
-#endif
-
 /* RaiseException */
 static void __Pyx_Raise(PyObject *type, PyObject *value, PyObject *tb, PyObject *cause) {
     PyObject* owned_instance = NULL;
@@ -14867,71 +15889,42 @@ static CYTHON_INLINE int __Pyx_HasAttr(PyObject *o, PyObject *n) {
 }
 #endif
 
-/* SwapException */
-#if CYTHON_FAST_THREAD_STATE
-static CYTHON_INLINE void __Pyx__ExceptionSwap(PyThreadState *tstate, PyObject **type, PyObject **value, PyObject **tb) {
-    PyObject *tmp_type, *tmp_value, *tmp_tb;
-  #if CYTHON_USE_EXC_INFO_STACK && PY_VERSION_HEX >= 0x030B00a4
-    _PyErr_StackItem *exc_info = tstate->exc_info;
-    tmp_value = exc_info->exc_value;
-    exc_info->exc_value = *value;
-    if (tmp_value == NULL || tmp_value == Py_None) {
-        Py_XDECREF(tmp_value);
-        tmp_value = NULL;
-        tmp_type = NULL;
-        tmp_tb = NULL;
-    } else {
-        tmp_type = (PyObject*) Py_TYPE(tmp_value);
-        Py_INCREF(tmp_type);
-        #if CYTHON_COMPILING_IN_CPYTHON
-        tmp_tb = ((PyBaseExceptionObject*) tmp_value)->traceback;
-        Py_XINCREF(tmp_tb);
-        #else
-        tmp_tb = PyException_GetTraceback(tmp_value);
-        #endif
+/* RaiseTooManyValuesToUnpack */
+static CYTHON_INLINE void __Pyx_RaiseTooManyValuesError(Py_ssize_t expected) {
+    PyErr_Format(PyExc_ValueError,
+                 "too many values to unpack (expected %" CYTHON_FORMAT_SSIZE_T "d)", expected);
+}
+
+/* RaiseNeedMoreValuesToUnpack */
+static CYTHON_INLINE void __Pyx_RaiseNeedMoreValuesError(Py_ssize_t index) {
+    PyErr_Format(PyExc_ValueError,
+                 "need more than %" CYTHON_FORMAT_SSIZE_T "d value%.1s to unpack",
+                 index, (index == 1) ? "" : "s");
+}
+
+/* IterFinish */
+static CYTHON_INLINE int __Pyx_IterFinish(void) {
+    PyObject* exc_type;
+    __Pyx_PyThreadState_declare
+    __Pyx_PyThreadState_assign
+    exc_type = __Pyx_PyErr_CurrentExceptionType();
+    if (unlikely(exc_type)) {
+        if (unlikely(!__Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))
+            return -1;
+        __Pyx_PyErr_Clear();
+        return 0;
     }
-  #elif CYTHON_USE_EXC_INFO_STACK
-    _PyErr_StackItem *exc_info = tstate->exc_info;
-    tmp_type = exc_info->exc_type;
-    tmp_value = exc_info->exc_value;
-    tmp_tb = exc_info->exc_traceback;
-    exc_info->exc_type = *type;
-    exc_info->exc_value = *value;
-    exc_info->exc_traceback = *tb;
-  #else
-    tmp_type = tstate->exc_type;
-    tmp_value = tstate->exc_value;
-    tmp_tb = tstate->exc_traceback;
-    tstate->exc_type = *type;
-    tstate->exc_value = *value;
-    tstate->exc_traceback = *tb;
-  #endif
-    *type = tmp_type;
-    *value = tmp_value;
-    *tb = tmp_tb;
-}
-#else
-static CYTHON_INLINE void __Pyx_ExceptionSwap(PyObject **type, PyObject **value, PyObject **tb) {
-    PyObject *tmp_type, *tmp_value, *tmp_tb;
-    PyErr_GetExcInfo(&tmp_type, &tmp_value, &tmp_tb);
-    PyErr_SetExcInfo(*type, *value, *tb);
-    *type = tmp_type;
-    *value = tmp_value;
-    *tb = tmp_tb;
-}
-#endif
-
-/* PyObjectCallNoArg */
-static CYTHON_INLINE PyObject* __Pyx_PyObject_CallNoArg(PyObject *func) {
-    PyObject *arg[2] = {NULL, NULL};
-    return __Pyx_PyObject_FastCall(func, arg + 1, 0 | __Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET);
+    return 0;
 }
 
-/* PyUnicode_Unicode */
-static CYTHON_INLINE PyObject* __Pyx_PyUnicode_Unicode(PyObject *obj) {
-    if (unlikely(obj == Py_None))
-        obj = __pyx_mstate_global->__pyx_kp_u_None;
-    return __Pyx_NewRef(obj);
+/* UnpackItemEndCheck */
+static int __Pyx_IternextUnpackEndCheck(PyObject *retval, Py_ssize_t expected) {
+    if (unlikely(retval)) {
+        Py_DECREF(retval);
+        __Pyx_RaiseTooManyValuesError(expected);
+        return -1;
+    }
+    return __Pyx_IterFinish();
 }
 
 /* PyObjectCallOneArg */
@@ -15001,184 +15994,9 @@ static CYTHON_INLINE PyObject* __Pyx__PyObject_LookupSpecial(PyObject* obj, PyOb
 }
 #endif
 
-/* FastTypeChecks */
-#if CYTHON_COMPILING_IN_CPYTHON
-static int __Pyx_InBases(PyTypeObject *a, PyTypeObject *b) {
-    while (a) {
-        a = __Pyx_PyType_GetSlot(a, tp_base, PyTypeObject*);
-        if (a == b)
-            return 1;
-    }
-    return b == &PyBaseObject_Type;
-}
-static CYTHON_INLINE int __Pyx_IsSubtype(PyTypeObject *a, PyTypeObject *b) {
-    PyObject *mro;
-    if (a == b) return 1;
-    mro = a->tp_mro;
-    if (likely(mro)) {
-        Py_ssize_t i, n;
-        n = PyTuple_GET_SIZE(mro);
-        for (i = 0; i < n; i++) {
-            if (PyTuple_GET_ITEM(mro, i) == (PyObject *)b)
-                return 1;
-        }
-        return 0;
-    }
-    return __Pyx_InBases(a, b);
-}
-static CYTHON_INLINE int __Pyx_IsAnySubtype2(PyTypeObject *cls, PyTypeObject *a, PyTypeObject *b) {
-    PyObject *mro;
-    if (cls == a || cls == b) return 1;
-    mro = cls->tp_mro;
-    if (likely(mro)) {
-        Py_ssize_t i, n;
-        n = PyTuple_GET_SIZE(mro);
-        for (i = 0; i < n; i++) {
-            PyObject *base = PyTuple_GET_ITEM(mro, i);
-            if (base == (PyObject *)a || base == (PyObject *)b)
-                return 1;
-        }
-        return 0;
-    }
-    return __Pyx_InBases(cls, a) || __Pyx_InBases(cls, b);
-}
-static CYTHON_INLINE int __Pyx_inner_PyErr_GivenExceptionMatches2(PyObject *err, PyObject* exc_type1, PyObject *exc_type2) {
-    if (exc_type1) {
-        return __Pyx_IsAnySubtype2((PyTypeObject*)err, (PyTypeObject*)exc_type1, (PyTypeObject*)exc_type2);
-    } else {
-        return __Pyx_IsSubtype((PyTypeObject*)err, (PyTypeObject*)exc_type2);
-    }
-}
-static int __Pyx_PyErr_GivenExceptionMatchesTuple(PyObject *exc_type, PyObject *tuple) {
-    Py_ssize_t i, n;
-    assert(PyExceptionClass_Check(exc_type));
-    n = PyTuple_GET_SIZE(tuple);
-    for (i=0; i<n; i++) {
-        if (exc_type == PyTuple_GET_ITEM(tuple, i)) return 1;
-    }
-    for (i=0; i<n; i++) {
-        PyObject *t = PyTuple_GET_ITEM(tuple, i);
-        if (likely(PyExceptionClass_Check(t))) {
-            if (__Pyx_inner_PyErr_GivenExceptionMatches2(exc_type, NULL, t)) return 1;
-        } else {
-        }
-    }
-    return 0;
-}
-static CYTHON_INLINE int __Pyx_PyErr_GivenExceptionMatches(PyObject *err, PyObject* exc_type) {
-    if (likely(err == exc_type)) return 1;
-    if (likely(PyExceptionClass_Check(err))) {
-        if (likely(PyExceptionClass_Check(exc_type))) {
-            return __Pyx_inner_PyErr_GivenExceptionMatches2(err, NULL, exc_type);
-        } else if (likely(PyTuple_Check(exc_type))) {
-            return __Pyx_PyErr_GivenExceptionMatchesTuple(err, exc_type);
-        } else {
-        }
-    }
-    return PyErr_GivenExceptionMatches(err, exc_type);
-}
-static CYTHON_INLINE int __Pyx_PyErr_GivenExceptionMatches2(PyObject *err, PyObject *exc_type1, PyObject *exc_type2) {
-    assert(PyExceptionClass_Check(exc_type1));
-    assert(PyExceptionClass_Check(exc_type2));
-    if (likely(err == exc_type1 || err == exc_type2)) return 1;
-    if (likely(PyExceptionClass_Check(err))) {
-        return __Pyx_inner_PyErr_GivenExceptionMatches2(err, exc_type1, exc_type2);
-    }
-    return (PyErr_GivenExceptionMatches(err, exc_type1) || PyErr_GivenExceptionMatches(err, exc_type2));
-}
-#endif
-
-/* GetItemInt */
-static PyObject *__Pyx_GetItemInt_Generic(PyObject *o, PyObject* j) {
-    PyObject *r;
-    if (unlikely(!j)) return NULL;
-    r = PyObject_GetItem(o, j);
-    Py_DECREF(j);
-    return r;
-}
-static CYTHON_INLINE PyObject *__Pyx_GetItemInt_List_Fast(PyObject *o, Py_ssize_t i,
-                                                              CYTHON_NCP_UNUSED int wraparound,
-                                                              CYTHON_NCP_UNUSED int boundscheck) {
-#if CYTHON_ASSUME_SAFE_MACROS && CYTHON_ASSUME_SAFE_SIZE && !CYTHON_AVOID_BORROWED_REFS && !CYTHON_AVOID_THREAD_UNSAFE_BORROWED_REFS
-    Py_ssize_t wrapped_i = i;
-    if (wraparound & unlikely(i < 0)) {
-        wrapped_i += PyList_GET_SIZE(o);
-    }
-    if ((!boundscheck) || likely(__Pyx_is_valid_index(wrapped_i, PyList_GET_SIZE(o)))) {
-        PyObject *r = PyList_GET_ITEM(o, wrapped_i);
-        Py_INCREF(r);
-        return r;
-    }
-    return __Pyx_GetItemInt_Generic(o, PyLong_FromSsize_t(i));
-#else
-    return PySequence_GetItem(o, i);
-#endif
-}
-static CYTHON_INLINE PyObject *__Pyx_GetItemInt_Tuple_Fast(PyObject *o, Py_ssize_t i,
-                                                              CYTHON_NCP_UNUSED int wraparound,
-                                                              CYTHON_NCP_UNUSED int boundscheck) {
-#if CYTHON_ASSUME_SAFE_MACROS && CYTHON_ASSUME_SAFE_SIZE && !CYTHON_AVOID_BORROWED_REFS
-    Py_ssize_t wrapped_i = i;
-    if (wraparound & unlikely(i < 0)) {
-        wrapped_i += PyTuple_GET_SIZE(o);
-    }
-    if ((!boundscheck) || likely(__Pyx_is_valid_index(wrapped_i, PyTuple_GET_SIZE(o)))) {
-        PyObject *r = PyTuple_GET_ITEM(o, wrapped_i);
-        Py_INCREF(r);
-        return r;
-    }
-    return __Pyx_GetItemInt_Generic(o, PyLong_FromSsize_t(i));
-#else
-    return PySequence_GetItem(o, i);
-#endif
-}
-static CYTHON_INLINE PyObject *__Pyx_GetItemInt_Fast(PyObject *o, Py_ssize_t i, int is_list,
-                                                     CYTHON_NCP_UNUSED int wraparound,
-                                                     CYTHON_NCP_UNUSED int boundscheck) {
-#if CYTHON_ASSUME_SAFE_MACROS && CYTHON_ASSUME_SAFE_SIZE && !CYTHON_AVOID_BORROWED_REFS && CYTHON_USE_TYPE_SLOTS
-    if (is_list || PyList_CheckExact(o)) {
-        Py_ssize_t n = ((!wraparound) | likely(i >= 0)) ? i : i + PyList_GET_SIZE(o);
-        if ((!boundscheck) || (likely(__Pyx_is_valid_index(n, PyList_GET_SIZE(o))))) {
-            return __Pyx_PyList_GetItemRef(o, n);
-        }
-    }
-    else if (PyTuple_CheckExact(o)) {
-        Py_ssize_t n = ((!wraparound) | likely(i >= 0)) ? i : i + PyTuple_GET_SIZE(o);
-        if ((!boundscheck) || likely(__Pyx_is_valid_index(n, PyTuple_GET_SIZE(o)))) {
-            PyObject *r = PyTuple_GET_ITEM(o, n);
-            Py_INCREF(r);
-            return r;
-        }
-    } else {
-        PyMappingMethods *mm = Py_TYPE(o)->tp_as_mapping;
-        PySequenceMethods *sm = Py_TYPE(o)->tp_as_sequence;
-        if (mm && mm->mp_subscript) {
-            PyObject *r, *key = PyLong_FromSsize_t(i);
-            if (unlikely(!key)) return NULL;
-            r = mm->mp_subscript(o, key);
-            Py_DECREF(key);
-            return r;
-        }
-        if (likely(sm && sm->sq_item)) {
-            if (wraparound && unlikely(i < 0) && likely(sm->sq_length)) {
-                Py_ssize_t l = sm->sq_length(o);
-                if (likely(l >= 0)) {
-                    i += l;
-                } else {
-                    if (!PyErr_ExceptionMatches(PyExc_OverflowError))
-                        return NULL;
-                    PyErr_Clear();
-                }
-            }
-            return sm->sq_item(o, i);
-        }
-    }
-#else
-    if (is_list || !PyMapping_Check(o)) {
-        return PySequence_GetItem(o, i);
-    }
-#endif
-    return __Pyx_GetItemInt_Generic(o, PyLong_FromSsize_t(i));
+/* RaiseUnboundLocalError */
+static void __Pyx_RaiseUnboundLocalError(const char *varname) {
+    PyErr_Format(PyExc_UnboundLocalError, "local variable '%s' referenced before assignment", varname);
 }
 
 /* Import */
@@ -15358,7 +16176,7 @@ static PyObject* __Pyx_ImportFrom(PyObject* module, PyObject* name) {
         if (unlikely(!module_name_str)) { goto modbad; }
         module_name = PyUnicode_FromString(module_name_str);
         if (unlikely(!module_name)) { goto modbad; }
-        module_dot = PyUnicode_Concat(module_name, __pyx_mstate_global->__pyx_kp_u_);
+        module_dot = PyUnicode_Concat(module_name, __pyx_mstate_global->__pyx_kp_u__5);
         if (unlikely(!module_dot)) { goto modbad; }
         full_name = PyUnicode_Concat(module_dot, name);
         if (unlikely(!full_name)) { goto modbad; }
@@ -17376,7 +18194,7 @@ __Pyx_PyType_GetFullyQualifiedName(PyTypeObject* tp)
         result = name;
         name = NULL;
     } else {
-        result = __Pyx_NewRef(__pyx_mstate_global->__pyx_kp_u__13);
+        result = __Pyx_NewRef(__pyx_mstate_global->__pyx_kp_u__6);
     }
     goto done;
 }
@@ -17911,6 +18729,93 @@ raise_neg_overflow:
         "can't convert negative value to int");
     return (int) -1;
 }
+
+/* FastTypeChecks */
+#if CYTHON_COMPILING_IN_CPYTHON
+static int __Pyx_InBases(PyTypeObject *a, PyTypeObject *b) {
+    while (a) {
+        a = __Pyx_PyType_GetSlot(a, tp_base, PyTypeObject*);
+        if (a == b)
+            return 1;
+    }
+    return b == &PyBaseObject_Type;
+}
+static CYTHON_INLINE int __Pyx_IsSubtype(PyTypeObject *a, PyTypeObject *b) {
+    PyObject *mro;
+    if (a == b) return 1;
+    mro = a->tp_mro;
+    if (likely(mro)) {
+        Py_ssize_t i, n;
+        n = PyTuple_GET_SIZE(mro);
+        for (i = 0; i < n; i++) {
+            if (PyTuple_GET_ITEM(mro, i) == (PyObject *)b)
+                return 1;
+        }
+        return 0;
+    }
+    return __Pyx_InBases(a, b);
+}
+static CYTHON_INLINE int __Pyx_IsAnySubtype2(PyTypeObject *cls, PyTypeObject *a, PyTypeObject *b) {
+    PyObject *mro;
+    if (cls == a || cls == b) return 1;
+    mro = cls->tp_mro;
+    if (likely(mro)) {
+        Py_ssize_t i, n;
+        n = PyTuple_GET_SIZE(mro);
+        for (i = 0; i < n; i++) {
+            PyObject *base = PyTuple_GET_ITEM(mro, i);
+            if (base == (PyObject *)a || base == (PyObject *)b)
+                return 1;
+        }
+        return 0;
+    }
+    return __Pyx_InBases(cls, a) || __Pyx_InBases(cls, b);
+}
+static CYTHON_INLINE int __Pyx_inner_PyErr_GivenExceptionMatches2(PyObject *err, PyObject* exc_type1, PyObject *exc_type2) {
+    if (exc_type1) {
+        return __Pyx_IsAnySubtype2((PyTypeObject*)err, (PyTypeObject*)exc_type1, (PyTypeObject*)exc_type2);
+    } else {
+        return __Pyx_IsSubtype((PyTypeObject*)err, (PyTypeObject*)exc_type2);
+    }
+}
+static int __Pyx_PyErr_GivenExceptionMatchesTuple(PyObject *exc_type, PyObject *tuple) {
+    Py_ssize_t i, n;
+    assert(PyExceptionClass_Check(exc_type));
+    n = PyTuple_GET_SIZE(tuple);
+    for (i=0; i<n; i++) {
+        if (exc_type == PyTuple_GET_ITEM(tuple, i)) return 1;
+    }
+    for (i=0; i<n; i++) {
+        PyObject *t = PyTuple_GET_ITEM(tuple, i);
+        if (likely(PyExceptionClass_Check(t))) {
+            if (__Pyx_inner_PyErr_GivenExceptionMatches2(exc_type, NULL, t)) return 1;
+        } else {
+        }
+    }
+    return 0;
+}
+static CYTHON_INLINE int __Pyx_PyErr_GivenExceptionMatches(PyObject *err, PyObject* exc_type) {
+    if (likely(err == exc_type)) return 1;
+    if (likely(PyExceptionClass_Check(err))) {
+        if (likely(PyExceptionClass_Check(exc_type))) {
+            return __Pyx_inner_PyErr_GivenExceptionMatches2(err, NULL, exc_type);
+        } else if (likely(PyTuple_Check(exc_type))) {
+            return __Pyx_PyErr_GivenExceptionMatchesTuple(err, exc_type);
+        } else {
+        }
+    }
+    return PyErr_GivenExceptionMatches(err, exc_type);
+}
+static CYTHON_INLINE int __Pyx_PyErr_GivenExceptionMatches2(PyObject *err, PyObject *exc_type1, PyObject *exc_type2) {
+    assert(PyExceptionClass_Check(exc_type1));
+    assert(PyExceptionClass_Check(exc_type2));
+    if (likely(err == exc_type1 || err == exc_type2)) return 1;
+    if (likely(PyExceptionClass_Check(err))) {
+        return __Pyx_inner_PyErr_GivenExceptionMatches2(err, exc_type1, exc_type2);
+    }
+    return (PyErr_GivenExceptionMatches(err, exc_type1) || PyErr_GivenExceptionMatches(err, exc_type2));
+}
+#endif
 
 /* GetRuntimeVersion */
 static unsigned long __Pyx_get_runtime_version(void) {

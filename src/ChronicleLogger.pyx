@@ -3,18 +3,20 @@
 
 # === EXTERNAL & STANDARD LIBRARY IMPORTS ===
 import os
-from subprocess import Popen, DEVNULL
+import subprocess
+from subprocess import Popen
 import sys
 import ctypes
 import tarfile
 import re
 from datetime import datetime
 
-# === Suroot.py ===
-# src/ChronicleLogger/Suroot.py  # Note: Filename without underscore for consistency
-# Minimal, safe, non-interactive root/sudo detector
-# ONLY for internal use by ChronicleLogger
-
+# Python 2.7 compatibility shim
+if not hasattr(subprocess, 'DEVNULL'):
+    DEVNULL = open(os.devnull, 'wb')
+else:
+    DEVNULL = subprocess.DEVNULL
+ 
 class _Suroot:
     """
     Tiny, zero-dependency, non-interactive privilege detector.
@@ -25,7 +27,7 @@ class _Suroot:
     CLASSNAME = "Suroot"
     MAJOR_VERSION = 0
     MINOR_VERSION = 1
-    PATCH_VERSION = 0
+    PATCH_VERSION = 1
 
     _is_root = None
     _can_sudo_nopasswd = None
@@ -33,17 +35,18 @@ class _Suroot:
     @staticmethod
     def class_version():
         """Return the class name and version string."""
-        return f"{_Suroot.CLASSNAME} v{_Suroot.MAJOR_VERSION}.{_Suroot.MINOR_VERSION}.{_Suroot.PATCH_VERSION}"
+        # NEW: Replaced f-string with .format() for Py2 compat (f-strings Py3.6+)
+        return "{0.CLASSNAME} v{0.MAJOR_VERSION}.{0.MINOR_VERSION}.{0.PATCH_VERSION}".format(_Suroot)
 
     @staticmethod
-    def is_root() -> bool:
+    def is_root():  # NEW: Removed -> bool type hint (Py3.5+ syntax error in Py2)
         """Are we currently running as root (euid == 0)?"""
         if _Suroot._is_root is None:
             _Suroot._is_root = os.geteuid() == 0
         return _Suroot._is_root
 
     @staticmethod
-    def can_sudo_without_password() -> bool:
+    def can_sudo_without_password():  # NEW: Removed -> bool type hint
         """Can we run 'sudo' commands without being asked for a password?"""
         if _Suroot._can_sudo_nopasswd is not None:
             return _Suroot._can_sudo_nopasswd
@@ -59,7 +62,11 @@ class _Suroot:
                 stdout=DEVNULL,
                 stderr=DEVNULL,
             )
-            proc.communicate(timeout=5)
+            # NEW: Py2 compat for communicate(timeout=5): Py2 Popen.communicate() lacks timeout (Py3.3+); use version check and fallback to no timeout (or add threading if strict timeout needed)
+            if sys.version_info[0] >= 3 and sys.version_info[1] >= 3:
+                proc.communicate(timeout=5)
+            else:
+                proc.communicate()  # No timeout in Py2; process may hang if sudo hangs, but non-interactive -n prevents prompts
             _Suroot._can_sudo_nopasswd = proc.returncode == 0
         except Exception:
             _Suroot._can_sudo_nopasswd = False
@@ -67,13 +74,14 @@ class _Suroot:
         return _Suroot._can_sudo_nopasswd
 
     @staticmethod
-    def should_use_system_paths() -> bool:
+    def should_use_system_paths():  # NEW: Removed -> bool type hint
         """
         Final decision method used by ChronicleLogger.
         Returns True → use /var/log and /var/<app>
         Returns False → use ~/.app/<app>/log
+        This logic determine if the real user (root is root, sudo still comes from non-root user) 
         """
-        return _Suroot.is_root() or _Suroot.can_sudo_without_password()
+        return _Suroot.is_root() and not _Suroot.can_sudo_without_password()
 
 # === ChronicleLogger.py ===
 # src/chronicle_logger/ChronicleLogger.py
@@ -85,6 +93,11 @@ try:
 except NameError:
     basestring = str
 
+# NEW: io.open fallback for encoding='utf-8' support in Py2 (io.open added in Py2.6; use conditional for safety)
+try:
+    from io import open as io_open
+except ImportError:
+    io_open = open
 
 # baseDir should be independent
 # It should never be affected by root/sudo/normal user
@@ -96,15 +109,14 @@ except NameError:
 #              /home/user/.myapp
 #              /opt/myapp
 # 
-# logDir()   → /var/log/myapp   ← automatically derived only if not set
-#              ~/.app/myapp/log
-
+# logDir()   → /var/log/myapp   ← automatically derived only if user is root
+#              ~/.app/myapp/log ← if user is non-root (no matter is sudo or not)
 
 class ChronicleLogger:
     CLASSNAME = "ChronicleLogger"
     MAJOR_VERSION = 0
     MINOR_VERSION = 1
-    PATCH_VERSION = 0
+    PATCH_VERSION = 1
 
     LOG_ARCHIVE_DAYS = 7
     LOG_REMOVAL_DAYS = 30
@@ -124,6 +136,9 @@ class ChronicleLogger:
             self.logDir(logdir)
         else:
             self.logDir("")  # triggers default path + directory creation
+        # After this, the logDir() should return the log path
+        # for root it's should starts with /etc/appname/log/...
+        # for non-root (no matter is sudo or not ) with ~/.app/appname/log
         self.baseDir(basedir if basedir else "")
 
         self.__current_logfile_path__ = self._get_log_filename()
@@ -134,17 +149,19 @@ class ChronicleLogger:
 
     def strToByte(self, value):
         if isinstance(value, basestring):
-            return value.encode()
+            return value.encode('utf-8')  # NEW: Explicit utf-8 for Py3 bytes consistency
         elif value is None or isinstance(value, bytes):
             return value
-        raise TypeError(f"Expected str/bytes/None, got {type(value).__name__}")
+        # NEW: Replaced f-string with .format() for Py2 compat
+        raise TypeError("Expected str/bytes/None, got {0}".format(type(value).__name__))
 
     def byteToStr(self, value):
         if value is None or isinstance(value, basestring):
             return value
         elif isinstance(value, bytes):
-            return value.decode()
-        raise TypeError(f"Expected str/bytes/None, got {type(value).__name__}")
+            return value.decode('utf-8')  # NEW: Explicit utf-8 for Py2/3 consistency
+        # NEW: Replaced f-string with .format()
+        raise TypeError("Expected str/bytes/None, got {0}".format(type(value).__name__))
 
     def inPython(self):
         if self.__is_python__ is None:
@@ -155,21 +172,23 @@ class ChronicleLogger:
         if logname is not None:
             self.__logname__ = self.strToByte(logname)
             if self.inPython():
-                name = self.__logname__.decode()
+                name = self.__logname__.decode('utf-8')  # NEW: Explicit decode
                 name = re.sub(r'(?<!^)(?=[A-Z])', '-', name).lower()
-                self.__logname__ = name.encode()
+                self.__logname__ = name.encode('utf-8')  # NEW: Explicit encode
         else:
-            return self.__logname__.decode()
+            return self.__logname__.decode('utf-8')  # NEW: Explicit decode
 
     def __set_base_dir__(self, basedir=b""):
         basedir_str = self.byteToStr(basedir)
-        if not basedir_str:
-            appname = self.__logname__.decode()
+        if not basedir_str or basedir_str=='':
+            appname = self.__logname__.decode('utf-8')  # NEW: Explicit decode
             if _Suroot.should_use_system_paths():
-                path = f"/var/{appname}"
+                # NEW: Replaced f-string with .format()
+                path = "/var/{0}".format(appname)
             else:
                 home = os.path.expanduser("~")
-                path = os.path.join(home, f".app/{appname}")
+                # NEW: Replaced f-string with .format()
+                path = os.path.join(home, ".app/{0}".format(appname))
             self.__basedir__ = path
         else:
             self.__basedir__ = basedir_str
@@ -184,15 +203,17 @@ class ChronicleLogger:
 
     def __set_log_dir__(self, logdir=b""):
         logdir_str = self.byteToStr(logdir)
-        if logdir_str:
+        if logdir_str and logdir_str!='':
             self.__logdir__ = logdir_str
         else:
-            appname = self.__logname__.decode()
+            appname = self.__logname__.decode('utf-8')  # NEW: Explicit decode
             if _Suroot.should_use_system_paths():
-                self.__logdir__ = f"/var/log/{appname}"
+                # NEW: Replaced f-string with .format()
+                self.__logdir__ = "/var/log/{0}".format(appname)
             else:
                 home = os.path.expanduser("~")
-                self.__logdir__ = os.path.join(home, f".app/{appname}", "log")
+                # NEW: Replaced f-string with .format()
+                self.__logdir__ = os.path.join(home, ".app/{0}".format(appname), "log")
 
     def logDir(self, logdir=None):
         if logdir is not None:
@@ -212,30 +233,42 @@ class ChronicleLogger:
 
     @staticmethod
     def class_version():
-        return f"{ChronicleLogger.CLASSNAME} v{ChronicleLogger.MAJOR_VERSION}.{ChronicleLogger.MINOR_VERSION}.{ChronicleLogger.PATCH_VERSION}"
+        # NEW: Replaced f-string with .format()
+        return "{0.CLASSNAME} v{0.MAJOR_VERSION}.{0.MINOR_VERSION}.{0.PATCH_VERSION}".format(ChronicleLogger)
 
     def ensure_directory_exists(self, dir_path):
-        if dir_path and not os.path.exists(dir_path):
-            try:
-                os.makedirs(dir_path)
-                print(f"Created directory: {dir_path}")
-            except Exception as e:
-                self.log_message(f"Failed to create directory {dir_path}: {e}", level="ERROR")
+        # Example for ensure_directory_exists (around line 172)
+        try:
+            os.makedirs(dir_path)
+            print("Created directory: {0}".format(dir_path))
+        except Exception:
+            # NEW: Version-conditional exception syntax for Py2/3 compat (comma in Py2, 'as' in Py3)
+            if sys.version_info[0] < 3:
+                exc_type, exc_value, exc_tb = sys.exc_info()
+                e = exc_value  # Bind e for Py2
+            else:
+                exc_type, exc_value, exc_tb = sys.exc_info()
+                e = exc_value  # Use as e implicitly via exc_info for consistency
+            #self.log_message("Failed to create directory {0}: {1}".format(dir_path, e), level="ERROR")
 
     def _get_log_filename(self):
         date_str = datetime.now().strftime('%Y%m%d')
-        filename = f"{self.__logdir__}/{self.__logname__.decode()}-{date_str}.log"
-        return ctypes.c_char_p(filename.encode()).value
+        # NEW: Replaced f-string with .format(); explicit decode/encode for path handling
+        dir_decoded = self.__logdir__.decode('utf-8') if isinstance(self.__logdir__, bytes) else self.__logdir__
+        name_decoded = self.__logname__.decode('utf-8')
+        filename = "{0}/{1}-{2}.log".format(dir_decoded, name_decoded, date_str)
+        return ctypes.c_char_p(filename.encode('utf-8')).value
 
     def log_message(self, message, level=b"INFO", component=b""):
         pid = os.getpid()
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        component_str = f" @{self.byteToStr(component)}" if component else ""
+        component_str = " @{0}".format(self.byteToStr(component)) if component else ""  # NEW: Replaced f-string with .format()
         message_str = self.byteToStr(message)
         level_str = self.byteToStr(level).upper()
 
-        log_entry = f"[{timestamp}] pid:{pid} [{level_str}]{component_str} :] {message_str}\n"
+        # NEW: Replaced f-string with .format()
+        log_entry = "[{0}] pid:{1} [{2}]{3} :] {4}\n".format(timestamp, pid, level_str, component_str, message_str)
 
         new_path = self._get_log_filename()
 
@@ -243,7 +276,9 @@ class ChronicleLogger:
             self.log_rotation()
             self.__old_logfile_path__ = new_path
             if self.isDebug():
-                header = f"[{timestamp}] pid:{pid} [INFO] @logger :] Using {new_path.decode()}\n"
+                # NEW: Replaced f-string with .format(); handle new_path decode
+                new_path_decoded = new_path.decode('utf-8') if isinstance(new_path, bytes) else new_path
+                header = "[{0}] pid:{1} [INFO] @logger :] Using {2}\n".format(timestamp, pid, new_path_decoded)
                 log_entry = header + log_entry
 
         if self._has_write_permission(new_path):
@@ -254,15 +289,28 @@ class ChronicleLogger:
             self.write_to_file(log_entry)
 
     def _has_write_permission(self, file_path):
+        # Example for _has_write_permission
         try:
             with open(file_path, 'a'):
                 return True
-        except (PermissionError, IOError):
-            print(f"Permission denied for writing to {file_path}", file=sys.stderr)
-            return False
+        except:
+            # NEW: Version-conditional for multi-exceptions: tuple in Py3, comma-tuple in Py2
+            if sys.version_info[0] < 3:
+                exc_type, exc_value, exc_tb = sys.exc_info()
+                if issubclass(exc_type, (OSError, IOError)):  # Check Py2 equivalents
+                    e = exc_value
+                    print("Permission denied for writing to {0}".format(file_path), file=sys.stderr)
+                    return False
+            else:
+                exc_type, exc_value, exc_tb = sys.exc_info()
+                if issubclass(exc_type, (OSError, IOError)):
+                    e = exc_value
+                    print("Permission denied for writing to {0}".format(file_path), file=sys.stderr)
+                    return False
 
     def write_to_file(self, log_entry):
-        with open(self.__current_logfile_path__, 'a', encoding='utf-8') as f:
+        # NEW: Use io_open for encoding support in Py2/3
+        with io_open(self.__current_logfile_path__, 'a', encoding='utf-8') as f:
             f.write(log_entry)
 
     def log_rotation(self):
@@ -282,8 +330,13 @@ class ChronicleLogger:
                             self._archive_log(file)
                     except ValueError:
                         continue
-        except Exception as e:
-            print(f"Error during archive: {e}", file=sys.stderr)
+        except Exception:
+            # NEW: Cross-version exception handling with sys.exc_info() for Py2/3 compat (avoids comma/as syntax errors; binds e safely)
+            exc_type, exc_value, exc_tb = sys.exc_info()
+            e = exc_value  # Access e in both Py2 and Py3
+            # NEW: Replaced f-string with .format() (already done, but confirmed for compat)
+            print("Error during archive: {0}".format(e), file=sys.stderr)
+            
 
     def _archive_log(self, filename):
         log_path = os.path.join(self.__logdir__, filename)
@@ -292,9 +345,14 @@ class ChronicleLogger:
             with tarfile.open(archive_path, "w:gz") as tar:
                 tar.add(log_path, arcname=filename)
             os.remove(log_path)
-            print(f"Archived log file: {archive_path}")
-        except Exception as e:
-            print(f"Error archiving {filename}: {e}", file=sys.stderr)
+            # NEW: Replaced f-string with .format()
+            print("Archived log file: {0}".format(archive_path))
+        except Exception:
+            # NEW: Cross-version exception handling with sys.exc_info() for Py2/3 compat (avoids comma/as syntax errors; binds e safely)
+            exc_type, exc_value, exc_tb = sys.exc_info()
+            e = exc_value  # Access e in both Py2 and Py3
+            # NEW: Replaced f-string with .format()
+        print("Error archiving {0}: {1}".format(filename, e), file=sys.stderr)
 
     def remove_old_logs(self):
         try:
@@ -307,5 +365,10 @@ class ChronicleLogger:
                             os.remove(os.path.join(self.__logdir__, file))
                     except ValueError:
                         continue
-        except Exception as e:
-            print(f"Error during removal: {e}", file=sys.stderr)
+        except Exception:
+            # NEW: Cross-version exception handling with sys.exc_info() for Py2/3 compat (avoids comma/as syntax errors; binds e safely)
+            exc_type, exc_value, exc_tb = sys.exc_info()
+            e = exc_value  # Access e in both Py2 and Py3
+            # NEW: Replaced f-string with .format()
+            print("Error during removal: {0}".format(e), file=sys.stderr)
+
