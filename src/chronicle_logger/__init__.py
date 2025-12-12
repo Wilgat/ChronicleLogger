@@ -2,4 +2,4 @@
 from .Suroot import _Suroot
 
 __all__ = ['StateLogic']
-__version__ = "0.1.1"
+__version__ = "0.1.2"

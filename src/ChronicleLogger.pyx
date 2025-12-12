@@ -27,7 +27,7 @@ class _Suroot:
     CLASSNAME = "Suroot"
     MAJOR_VERSION = 0
     MINOR_VERSION = 1
-    PATCH_VERSION = 1
+    PATCH_VERSION = 2
 
     _is_root = None
     _can_sudo_nopasswd = None
@@ -116,7 +116,7 @@ class ChronicleLogger:
     CLASSNAME = "ChronicleLogger"
     MAJOR_VERSION = 0
     MINOR_VERSION = 1
-    PATCH_VERSION = 1
+    PATCH_VERSION = 2
 
     LOG_ARCHIVE_DAYS = 7
     LOG_REMOVAL_DAYS = 30

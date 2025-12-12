@@ -43,7 +43,7 @@ class ChronicleLogger:
     CLASSNAME = "ChronicleLogger"
     MAJOR_VERSION = 0
     MINOR_VERSION = 1
-    PATCH_VERSION = 1
+    PATCH_VERSION = 2
 
     LOG_ARCHIVE_DAYS = 7
     LOG_REMOVAL_DAYS = 30
