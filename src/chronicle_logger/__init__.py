@@ -2,5 +2,5 @@
 from .Suroot import _Suroot
 from .ChronicleLogger import ChronicleLogger
 
-__all__ = ['ChronicleLogger']
-__version__ = "0.1.3"
+__all__ = ['ChronicleLogger.ChronicleLogger']
+__version__ = "1.0.0"

@@ -25,9 +25,9 @@ class _Suroot:
     """
 
     CLASSNAME = "Suroot"
-    MAJOR_VERSION = 0
-    MINOR_VERSION = 1
-    PATCH_VERSION = 2
+    MAJOR_VERSION = 1
+    MINOR_VERSION = 0
+    PATCH_VERSION = 0
 
     _is_root = None
     _can_sudo_nopasswd = None
@@ -114,9 +114,9 @@ except ImportError:
 
 class ChronicleLogger:
     CLASSNAME = "ChronicleLogger"
-    MAJOR_VERSION = 0
-    MINOR_VERSION = 1
-    PATCH_VERSION = 2
+    MAJOR_VERSION = 1
+    MINOR_VERSION = 0
+    PATCH_VERSION = 0
 
     LOG_ARCHIVE_DAYS = 7
     LOG_REMOVAL_DAYS = 30

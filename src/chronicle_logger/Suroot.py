@@ -29,9 +29,9 @@ class _Suroot:
     """
 
     CLASSNAME = "Suroot"
-    MAJOR_VERSION = 0
-    MINOR_VERSION = 1
-    PATCH_VERSION = 2
+    MAJOR_VERSION = 1
+    MINOR_VERSION = 0
+    PATCH_VERSION = 0
 
     _is_root = None
     _can_sudo_nopasswd = None

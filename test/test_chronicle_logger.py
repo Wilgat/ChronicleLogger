@@ -19,7 +19,7 @@ TEST_DIR = os.path.dirname(__file__)
 SRC_DIR = os.path.abspath(os.path.join(TEST_DIR, "..", "src"))
 sys.path.insert(0, SRC_DIR)
 
-from chronicle_logger.ChronicleLogger import ChronicleLogger
+from chronicle_logger import ChronicleLogger
 
 # test/test_chronicle_logger.py
 
