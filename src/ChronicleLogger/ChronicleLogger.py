@@ -42,7 +42,7 @@ except ImportError:
 class ChronicleLogger:
     CLASSNAME = "ChronicleLogger"
     MAJOR_VERSION = 1
-    MINOR_VERSION = 0
+    MINOR_VERSION = 1
     PATCH_VERSION = 0
 
     LOG_ARCHIVE_DAYS = 7
@@ -127,6 +127,14 @@ class ChronicleLogger:
             if self.__basedir__ is None:
                 self.__set_base_dir__()
             return self.__basedir__
+
+    @staticmethod
+    def is_root():
+        return _Suroot.is_root()
+
+    @staticmethod
+    def root_or_sudo():
+        return _Suroot.can_sudo_without_password()
 
     def __set_log_dir__(self, logdir=b""):
         logdir_str = self.byteToStr(logdir)

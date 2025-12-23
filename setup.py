@@ -12,7 +12,7 @@ def read(*names, **kwargs):
         return fp.read()
 
 def get_version():
-    version_file = os.path.join("src", "chronicle_logger", "__init__.py")
+    version_file = os.path.join("src", "ChronicleLogger", "__init__.py")
     with open(version_file) as f:
         for line in f:
             if line.startswith("__version__"):

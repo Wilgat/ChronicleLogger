@@ -19,9 +19,9 @@ TEST_DIR = os.path.dirname(__file__)
 SRC_DIR = os.path.abspath(os.path.join(TEST_DIR, "..", "src"))
 sys.path.insert(0, SRC_DIR)
 
-from chronicle_logger import ChronicleLogger
+from ChronicleLogger import ChronicleLogger
 
-# test/test_chronicle_logger.py
+# test/test_ChronicleLogger.py
 
 # NEW: Compatibility for pytest fixtures (tmp_path is Py3-only Path; use tmpdir for Py2/3 dual support)
 #      tmpdir works in pytest 4.6.11 (Py2) as str, and in Py3 as Path, but we treat as str for compat
@@ -46,7 +46,7 @@ def test_logname_becomes_kebab_case():
     logger = ChronicleLogger(logname="HelloWorld")
     assert logger.logName() == "hello-world"
 
-@patch('chronicle_logger.ChronicleLogger.ChronicleLogger.inPython', return_value=False)
+@patch('ChronicleLogger.ChronicleLogger.ChronicleLogger.inPython', return_value=False)
 def test_logname_unchanged_in_cython_binary(mock):
     logger = ChronicleLogger(logname="PreserveCase")
     logger.logName("PreserveCase")
@@ -57,12 +57,12 @@ def test_basedir_is_user_defined_and_independent(tmpdir):  # NEW: Changed tmp_pa
     logger = ChronicleLogger(logname="App", basedir=custom)
     assert logger.baseDir() == custom
 
-@patch('chronicle_logger.Suroot._Suroot.should_use_system_paths', return_value=True)
+@patch('ChronicleLogger.Suroot._Suroot.should_use_system_paths', return_value=True)
 def test_logdir_uses_system_path_when_privileged_and_not_set(mock):
     logger = ChronicleLogger(logname="RootApp")
     assert logger.logDir() == "/var/log/root-app"
 
-@patch('chronicle_logger.Suroot._Suroot.should_use_system_paths', return_value=False)
+@patch('ChronicleLogger.Suroot._Suroot.should_use_system_paths', return_value=False)
 def test_logdir_uses_user_path_when_not_privileged_and_not_set(mock):
     logger = ChronicleLogger(logname="UserApp")
     expected = os.path.join(os.path.expanduser("~"), ".app/user-app", "log")

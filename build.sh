@@ -16,11 +16,11 @@ import os
 import sys
 
 # Add src/chronicle_logger to path temporarily
-sys.path.insert(0, os.path.join(os.getcwd(), "src", "chronicle_logger"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 try:
-    from ChronicleLogger import ChronicleLogger
-    print(f"{ChronicleLogger.MAJOR_VERSION}.{ChronicleLogger.MINOR_VERSION}.{ChronicleLogger.PATCH_VERSION}")
+    import ChronicleLogger
+    print(ChronicleLogger.__version__)
 except Exception:
     print("unknown")
 PY
