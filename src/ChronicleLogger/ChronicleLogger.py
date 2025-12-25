@@ -9,6 +9,8 @@ import ctypes
 import tarfile
 import re
 from datetime import datetime
+# NEW: Added import for subprocess to execute pyenv commands in pyenvVenv method
+import subprocess
 
 
 # Correct import for your actual file: Suroot.py (capital S)
@@ -32,7 +34,7 @@ except ImportError:
 # We should not couple them
 # 
 # baseDir()  → /var/myapp        ← user sets this explicitly
-#              /home/user/.myapp
+#              /home/user/.myenv
 #              /opt/myapp
 # 
 # logDir()   → /var/log/myapp   ← automatically derived only if user is root
@@ -43,7 +45,7 @@ class ChronicleLogger:
     CLASSNAME = "ChronicleLogger"
     MAJOR_VERSION = 1
     MINOR_VERSION = 1
-    PATCH_VERSION = 0
+    PATCH_VERSION = 1
 
     LOG_ARCHIVE_DAYS = 7
     LOG_REMOVAL_DAYS = 30
@@ -59,14 +61,14 @@ class ChronicleLogger:
             return
 
         self.logName(logname)
-        if logdir:
-            self.logDir(logdir)
-        else:
-            self.logDir("")  # triggers default path + directory creation
         # After this, the logDir() should return the log path
         # for root it's should starts with /etc/appname/log/...
         # for non-root (no matter is sudo or not ) with ~/.app/appname/log
         self.baseDir(basedir if basedir else "")
+        if logdir:
+            self.logDir(logdir)
+        else:
+            self.logDir("")  # triggers default path + directory creation
 
         self.__current_logfile_path__ = self._get_log_filename()
         self.ensure_directory_exists(self.__logdir__)
@@ -92,8 +94,98 @@ class ChronicleLogger:
 
     def inPython(self):
         if self.__is_python__ is None:
-            self.__is_python__ = 'python' in sys.executable.lower()
+            exe_name = sys.executable.split('/')[-1]
+            self.__is_python__ = exe_name in ['python', 'python2', 'python3']
         return self.__is_python__
+
+    # NEW: Added inPyenv method to check if '.pyenv' is in sys.executable (case-sensitive substring match; caches result for efficiency)
+    def inPyenv(self):
+        if not hasattr(self, '__is_pyenv__'):
+            self.__is_pyenv__ = '.pyenv' in sys.executable
+        return self.__is_pyenv__
+
+    # NEW: Added venv_path method with lazy evaluation to return os.environ.get('VIRTUAL_ENV', '') (caches the path for efficiency; supports Py2/3 via os.environ)
+    def venv_path(self):
+        if not hasattr(self, '__venv_path__'):
+            self.__venv_path__ = os.environ.get('VIRTUAL_ENV', '')
+        return self.__venv_path__
+
+    # NEW: Added inVenv method with lazy evaluation to check if in virtual environment mode (True if VIRTUAL_ENV is set and non-empty; caches result for efficiency)
+    def inVenv(self):
+        if not hasattr(self, '__in_venv__'):
+            venv_env = os.environ.get('VIRTUAL_ENV', '')
+            self.__in_venv__ = bool(venv_env)
+        return self.__in_venv__
+
+    # NEW: Added pyenvVenv method with lazy evaluation: if inPyenv, runs 'pyenv versions' via subprocess to parse the active (*) virtualenv path (e.g., from line with '*' and '-->'); returns path as str or '' if not found or not in pyenv (caches for efficiency; handles Py2/3 output decoding)
+    def pyenvVenv(self):
+        if not hasattr(self, '__pyenv_venv_path__'):
+            if not self.inPyenv():
+                self.__pyenv_venv_path__ = ''
+            else:
+                try:
+                    result = subprocess.check_output(['pyenv', 'versions'], stderr=subprocess.STDOUT)
+                    output = result.decode('utf-8') if sys.version_info[0] < 3 else result.decode('utf-8')
+                    lines = output.strip().split('\n')
+                    for line in lines:
+                        if '*' in line and '-->' in line:
+                            path_start = line.find('--> ') + 4
+                            path = line[path_start:].strip()
+                            # NEW: Trim trailing "(set by PYENV_VERSION)" if present: rsplit on ' (' (space before paren) once, take [0], then strip (matches pyenv format; preserves cache and exists check without altering Py2/3 decode)
+                            if ' (' in path:
+                                path = path.rsplit(' (', 1)[0].strip()
+                            if path and os.path.exists(path):
+                                self.__pyenv_venv_path__ = path
+                                break
+                    else:
+                        self.__pyenv_venv_path__ = ''
+                except (subprocess.CalledProcessError, FileNotFoundError, IndexError):
+                    self.__pyenv_venv_path__ = ''
+        return self.__pyenv_venv_path__
+
+    # NEW: Added inConda method with lazy evaluation to check if in Conda environment (True if 'conda' in sys.executable or CONDA_DEFAULT_ENV is set and non-empty; caches result for efficiency; complements pyenv/venv detection for multi-tool isolation in builds like Cython .so files [[3]][doc_3][[6]][doc_6])
+    def inConda(self):
+        if not hasattr(self, '__in_conda__'):
+            conda_env = os.environ.get('CONDA_DEFAULT_ENV', '')
+            self.__in_conda__ = bool(conda_env) or 'conda' in sys.executable
+        return self.__in_conda__
+
+    # NEW: Added condaPath method with lazy evaluation: prioritizes os.environ.get('CONDA_DEFAULT_ENV', '') if set; otherwise runs 'conda env list' via subprocess to parse active (*) environment path (e.g., from line with '*' and path column); returns path as str or '' if not found (caches for efficiency; handles Py2/3 output decoding and aligns with env management for cross-distro setups like Ubuntu/Alpine [[1]][doc_1][[3]][doc_3][[6]][doc_6])
+    def condaPath(self):
+        if not hasattr(self, '__conda_path__'):
+            conda_env = os.environ.get('CONDA_DEFAULT_ENV', '')
+            if conda_env:
+                self.__conda_path__ = conda_env
+            else:
+                try:
+                    # Run 'conda env list' and capture output
+                    result = subprocess.check_output(['conda', 'env', 'list'], stderr=subprocess.STDOUT)
+                    output = result.decode('utf-8') if sys.version_info[0] < 3 else result.decode('utf-8')
+                    lines = output.strip().split('\n')
+                    for line in lines:
+                        if '*' in line:
+                            # Parse columns: env_name (spaces-padded), path (after spaces)
+                            parts = re.split(r'\s{2,}', line.strip())
+                            if len(parts) >= 2:
+                                path = parts[-1].strip()
+                                if path and os.path.exists(path):
+                                    self.__conda_path__ = path
+                                    break
+                    else:
+                        self.__conda_path__ = ''
+                except (subprocess.CalledProcessError, FileNotFoundError):
+                    self.__conda_path__ = ''
+            self.__conda_path__ = '' if not self.__conda_path__ else self.__conda_path__
+        return self.__conda_path__
+
+    def should_use_system_paths(self):  # NEW: Removed -> bool type hint
+        """
+        Final decision method used by ChronicleLogger.
+        Returns True → use /var/log and /var/<app>
+        Returns False → use ~/.app/<app>/log
+        This logic determine if the real user (root is root, sudo still comes from non-root user) 
+        """
+        return _Suroot.is_root()
 
     def logName(self, logname=None):
         if logname is not None:
@@ -105,27 +197,42 @@ class ChronicleLogger:
         else:
             return self.__logname__.decode('utf-8')  # NEW: Explicit decode
 
+    # NEW: Modified __set_base_dir__ to append "/.app/{appname}" to environment paths for inConda (using condaPath()), pyenvVenv(), and venv (using venv_path()) cases, ensuring sub-directory isolation within env roots (e.g., "/path/to/conda/envs/test/.app/{appname}"); maintains explicit basedir priority, lazy evaluation, and fallbacks to home-based ".app/{appname}" or root "/var/{appname}" without appends, aligning with hidden folder patterns for app configs in non-root setups [[1]][doc_1][[5]][doc_5][[6]][doc_6]
     def __set_base_dir__(self, basedir=b""):
         basedir_str = self.byteToStr(basedir)
-        if not basedir_str or basedir_str=='':
-            appname = self.__logname__.decode('utf-8')  # NEW: Explicit decode
-            if _Suroot.should_use_system_paths():
-                # NEW: Replaced f-string with .format()
-                path = "/var/{0}".format(appname)
-            else:
-                home = os.path.expanduser("~")
-                # NEW: Replaced f-string with .format()
-                path = os.path.join(home, ".app/{0}".format(appname))
-            self.__basedir__ = path
-        else:
+        if basedir_str and basedir_str != '':
             self.__basedir__ = basedir_str
+        else:
+            appname = self.byteToStr(self.__logname__)
+            if not hasattr(self, '__basedir__') or self.__basedir__ is None:
+                conda_path = self.condaPath()
+                if self.inConda() and conda_path:
+                    env_base = os.path.join(conda_path, ".app", appname)
+                    self.__basedir__ = env_base
+                else:
+                    pyenv_path = self.pyenvVenv()
+                    if pyenv_path:
+                        env_base = os.path.join(pyenv_path, ".app", appname)
+                        self.__basedir__ = env_base
+                    else:
+                        venv_path = self.venv_path()
+                        if venv_path:
+                            env_base = os.path.join(venv_path, ".app", appname)
+                            self.__basedir__ = env_base
+                        else:
+                            user_home = os.path.expanduser("~")
+                            app_path = os.path.join(user_home, ".app", appname)
+                            if self.inPython() or not self.is_root():
+                                self.__basedir__ = app_path
+                            else:
+                                self.__basedir__ = "/var/{0}".format(appname)
 
     def baseDir(self, basedir=None):
         if basedir is not None:
             self.__set_base_dir__(basedir)
         else:
             if self.__basedir__ is None:
-                self.__set_base_dir__()
+                self.__set_base_dir__(b"")
             return self.__basedir__
 
     @staticmethod
@@ -134,28 +241,24 @@ class ChronicleLogger:
 
     @staticmethod
     def root_or_sudo():
-        return _Suroot.can_sudo_without_password()
+        return _Suroot.can_sudo_without_password() or _Suroot.is_root()
 
+    # NEW: Rewritten __set_log_dir__ with lazy evaluation: first ensure baseDir is set via __set_base_dir__(); then derive logdir as baseDir + "/log" (appname-integrated via baseDir logic; overrides explicit logdir if provided; uses .format() for Py2 compat and aligns with prior dir derivation patterns [[1]][doc_1][[4]][doc_4])
     def __set_log_dir__(self, logdir=b""):
         logdir_str = self.byteToStr(logdir)
-        if logdir_str and logdir_str!='':
+        if logdir_str and logdir_str != '':
             self.__logdir__ = logdir_str
         else:
-            appname = self.__logname__.decode('utf-8')  # NEW: Explicit decode
-            if _Suroot.should_use_system_paths():
-                # NEW: Replaced f-string with .format()
-                self.__logdir__ = "/var/log/{0}".format(appname)
-            else:
-                home = os.path.expanduser("~")
-                # NEW: Replaced f-string with .format()
-                self.__logdir__ = os.path.join(home, ".app/{0}".format(appname), "log")
+            self.baseDir()  # Ensure baseDir is lazily set first
+            appname = self.byteToStr(self.__logname__)
+            self.__logdir__ = "{0}/log".format(self.__basedir__)
 
     def logDir(self, logdir=None):
         if logdir is not None:
             self.__set_log_dir__(logdir)
         else:
             if self.__logdir__ is None:
-                self.__set_log_dir__()
+                self.__set_log_dir__(b"")
             return self.__logdir__
 
     def isDebug(self):

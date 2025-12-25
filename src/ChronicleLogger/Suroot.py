@@ -31,7 +31,7 @@ class _Suroot:
     CLASSNAME = "Suroot"
     MAJOR_VERSION = 1
     MINOR_VERSION = 1
-    PATCH_VERSION = 0
+    PATCH_VERSION = 1
 
     _is_root = None
     _can_sudo_nopasswd = None
@@ -54,11 +54,6 @@ class _Suroot:
         """Can we run 'sudo' commands without being asked for a password?"""
         if _Suroot._can_sudo_nopasswd is not None:
             return _Suroot._can_sudo_nopasswd
-
-        if _Suroot.is_root():
-            _Suroot._can_sudo_nopasswd = True
-            return True
-
         try:
             proc = Popen(
                 ["sudo", "-n", "true"],
@@ -77,12 +72,4 @@ class _Suroot:
 
         return _Suroot._can_sudo_nopasswd
 
-    @staticmethod
-    def should_use_system_paths():  # NEW: Removed -> bool type hint
-        """
-        Final decision method used by ChronicleLogger.
-        Returns True → use /var/log and /var/<app>
-        Returns False → use ~/.app/<app>/log
-        This logic determine if the real user (root is root, sudo still comes from non-root user) 
-        """
-        return _Suroot.is_root() and not _Suroot.can_sudo_without_password()
+
