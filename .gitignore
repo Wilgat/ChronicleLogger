@@ -21,3 +21,5 @@ build/
 *.pyc
 
 test_env
+
+src/*.c

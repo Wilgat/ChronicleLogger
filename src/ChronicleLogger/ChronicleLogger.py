@@ -45,7 +45,7 @@ class ChronicleLogger:
     CLASSNAME = "ChronicleLogger"
     MAJOR_VERSION = 1
     MINOR_VERSION = 2
-    PATCH_VERSION = 1
+    PATCH_VERSION = 2
 
     LOG_ARCHIVE_DAYS = 7
     LOG_REMOVAL_DAYS = 30
@@ -161,26 +161,32 @@ class ChronicleLogger:
             self.__in_conda__ = bool(conda_env) or 'conda' in sys.executable
         return self.__in_conda__
 
+    @staticmethod
+    def conda_env_list():
+        result = subprocess.check_output(['conda', 'env', 'list'], stderr=subprocess.STDOUT)
+        return result
+
     # NEW: Added condaPath method with lazy evaluation: prioritizes os.environ.get('CONDA_DEFAULT_ENV', '') if set; otherwise runs 'conda env list' via subprocess to parse active (*) environment path (e.g., from line with '*' and path column); returns path as str or '' if not found (caches for efficiency; handles Py2/3 output decoding and aligns with env management for cross-distro setups like Ubuntu/Alpine [[1]][doc_1][[3]][doc_3][[6]][doc_6])
-# NEW: Added condaPath method with lazy evaluation: prioritizes os.environ.get('CONDA_DEFAULT_ENV', '') if set; otherwise runs 'conda env list' via subprocess to parse active (*) environment path (e.g., from line with '*' and path column); returns path as str or '' if not found (caches for efficiency; handles Py2/3 output decoding and aligns with env management for cross-distro setups like Ubuntu/Alpine [[1]][doc_1][[3]][doc_3][[6]][doc_6])
+    # NEW: Added condaPath method with lazy evaluation: prioritizes os.environ.get('CONDA_DEFAULT_ENV', '') if set; otherwise runs 'conda env list' via subprocess to parse active (*) environment path (e.g., from line with '*' and path column); returns path as str or '' if not found (caches for efficiency; handles Py2/3 output decoding and aligns with env management for cross-distro setups like Ubuntu/Alpine [[1]][doc_1][[3]][doc_3][[6]][doc_6])
     def condaPath(self):
         if not hasattr(self, '__conda_path__'):
             self.__conda_path__ = ''
             try:
                 # Run 'conda env list' and capture output
-                result = subprocess.check_output(['conda', 'env', 'list'], stderr=subprocess.STDOUT)
+                result = ChronicleLogger.conda_env_list()
                 output = result.decode('utf-8') if sys.version_info[0] < 3 else result.decode('utf-8')
                 lines = output.strip().split('\n')
                 for line in lines:
-                    if '*' in line:
+                    if "#" not in line:
+                        if '*' in line:
                         # Parse columns: env_name (spaces-padded), path (after spaces)
-                        parts = re.split(r'\s{2,}', line.strip())
-                        if len(parts) >= 2:
-                            print(parts)
-                            path = parts[-1].strip()
-                            if path and os.path.exists(path):
-                                self.__conda_path__ = path
-                                break
+                            parts = re.split(r'\s{2,}', line.strip())
+                            if len(parts) >= 2:
+                                print(parts)
+                                path = parts[-1].strip()
+                                if path and os.path.exists(path):
+                                    self.__conda_path__ = path
+                                    break
             except (subprocess.CalledProcessError, FileNotFoundError):
                 self.__conda_path__ = ''
         return self.__conda_path__
@@ -220,10 +226,10 @@ class ChronicleLogger:
                         else:
                             user_home = os.path.expanduser("~")
                             app_path = os.path.join(user_home, ".app", appname)
-                            if self.inPython() or not self.is_root():
-                                self.__basedir__ = app_path
-                            else:
+                            if self.is_root():
                                 self.__basedir__ = "/var/{0}".format(appname)
+                            else:
+                                self.__basedir__ = app_path
 
     def baseDir(self, basedir=None):
         if basedir is not None:

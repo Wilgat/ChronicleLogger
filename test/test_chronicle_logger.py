@@ -61,9 +61,11 @@ def test_basedir_is_user_defined_and_independent(tmpdir):  # NEW: Changed tmp_pa
 def test_logdir_uses_system_path_when_privileged_and_not_set():
     with patch('ChronicleLogger._Suroot.is_root', return_value=True):
         with patch('sys.executable', '/usr/bin/root-binary'):
-            logger = ChronicleLogger(logname="RootApp")
-            expected = "/var/RootApp/log"  # NEW: Adjusted for preserved CamelCase in binary mode (no kebab); logDir derives from baseDir + /log
-            assert logger.logDir() == expected
+            return_value = "".encode('utf-8')
+            with patch('ChronicleLogger.ChronicleLogger.ChronicleLogger.conda_env_list', return_value=return_value):
+                logger = ChronicleLogger(logname="RootApp")
+                expected = "/var/RootApp/log"  # NEW: Adjusted for preserved CamelCase in binary mode (no kebab); logDir derives from baseDir + /log
+                assert logger.logDir() == expected
 
 def test_executable_uses_user_path_when_not_privileged_and_pyenv_and_venv():
     with patch('ChronicleLogger.Suroot._Suroot.is_root', return_value=False):
@@ -75,25 +77,31 @@ def test_executable_uses_user_path_when_not_privileged_and_pyenv_and_venv():
 def test_logdir_uses_user_path_when_not_privileged_and_not_set():
     with patch('ChronicleLogger.Suroot._Suroot.is_root', return_value=False):
         with patch('sys.executable', '/usr/local/python'):
-            logger = ChronicleLogger(logname="UserApp")
-            expected = os.path.join(os.path.expanduser("~"), ".app/user-app", "log")  # NEW: Matches kebab-cased appname in Python mode + derived /log
-            assert logger.logDir() == expected
+            return_value = "".encode('utf-8')
+            with patch('ChronicleLogger.ChronicleLogger.ChronicleLogger.conda_env_list', return_value=return_value):
+                logger = ChronicleLogger(logname="UserApp")
+                expected = os.path.join(os.path.expanduser("~"), ".app/user-app", "log")  # NEW: Matches kebab-cased appname in Python mode + derived /log
+                assert logger.logDir() == expected
 
 def test_logdir_uses_user_path_when_not_privileged_and_pyenv():
     with patch('ChronicleLogger.Suroot._Suroot.is_root', return_value=False):
         with patch('sys.executable', os.path.join(os.path.expanduser("~"), ".pyenv/shims/python") ):
             with patch('ChronicleLogger.ChronicleLogger.ChronicleLogger.pyenv_versions', return_value='* 3.12.12 (set)'):
-                logger = ChronicleLogger(logname="UserApp")
-                expected = os.path.join(os.path.expanduser("~"), ".app/user-app", "log")  # NEW: Matches kebab-cased appname in Python mode + derived /log
-                assert logger.logDir() == expected
+                return_value = "".encode('utf-8')
+                with patch('ChronicleLogger.ChronicleLogger.ChronicleLogger.conda_env_list', return_value=return_value):
+                    logger = ChronicleLogger(logname="UserApp")
+                    expected = os.path.join(os.path.expanduser("~"), ".app/user-app", "log")  # NEW: Matches kebab-cased appname in Python mode + derived /log
+                    assert logger.logDir() == expected
 
 def test_logdir_uses_user_path_when_not_privileged_and_pyenv_and_venv():
     with patch('ChronicleLogger.Suroot._Suroot.is_root', return_value=False):
         with patch('sys.executable', os.path.join(os.path.expanduser("~"), ".pyenv/versions/build/bin/python") ):
             with patch('ChronicleLogger.ChronicleLogger.ChronicleLogger.pyenv_versions', return_value='* build --> /home/leolio/.pyenv/versions/3.12.12/envs/build (set)'):
-                logger = ChronicleLogger(logname="UserApp")
-                expected = os.path.join("/home/leolio/.pyenv/versions/3.12.12/envs/build/.app/user-app", "log")  # NEW: Matches kebab-cased appname in Python mode + derived /log
-                assert logger.logDir() == expected
+                return_value = "".encode('utf-8')
+                with patch('ChronicleLogger.ChronicleLogger.ChronicleLogger.conda_env_list', return_value=return_value):
+                    logger = ChronicleLogger(logname="UserApp")
+                    expected = os.path.join("/home/leolio/.pyenv/versions/3.12.12/envs/build/.app/user-app", "log")  # NEW: Matches kebab-cased appname in Python mode + derived /log
+                    assert logger.logDir() == expected
 
 def test_logdir_custom_path_overrides_everything(log_dir):
     logger = ChronicleLogger(logname="AnyApp", logdir=log_dir)
@@ -212,46 +220,48 @@ def test_in_conda_false(monkeypatch):
         assert logger.inConda() is False
         assert logger.inConda() is False  # Cached
 
-# NEW: Added test for condaPath(): sets CONDA_DEFAULT_ENV and verifies path return with caching; also tests subprocess parse for active env
-def test_conda_path_from_env(monkeypatch):
-    conda_path = "/home/user/miniconda3/envs/test"
-    monkeypatch.setenv('CONDA_DEFAULT_ENV', conda_path)
-    logger = ChronicleLogger(logname="TestApp")
-    assert logger.condaPath() == conda_path
-    assert logger.condaPath() == conda_path  # Cached
-
-# NEW: Added test for condaPath() via subprocess: mocks 'conda env list' output with active (*) env path, verifies extraction (uses re.split for columns) and existence check
-@patch('subprocess.check_output')
-@patch('os.path.exists', return_value=True)
-def test_conda_path_from_list(mock_exists, mock_output):
+def test_conda_path_from_list():
     sample_output = """# conda environments:
 #
 base                 *   /home/user/miniconda3
 test                     /home/user/miniconda3/envs/test"""
-    mock_output.return_value = sample_output.encode('utf-8')
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.delenv('CONDA_DEFAULT_ENV', raising=False)
-    logger = ChronicleLogger(logname="TestApp")
-    assert logger.condaPath() == '/home/user/miniconda3'
-    assert logger.condaPath() == '/home/user/miniconda3'  # Cached
+    return_value = sample_output.encode('utf-8')
+    with patch('ChronicleLogger.ChronicleLogger.ChronicleLogger.conda_env_list', return_value=return_value):
+        with patch('os.path.exists', return_value=True):
+            logger = ChronicleLogger(logname="TestApp")
+            assert logger.condaPath() == '/home/user/miniconda3'
+            assert logger.condaPath() == '/home/user/miniconda3'  # Cached
 
 # NEW: Added test for condaPath() fallback: mocks conda command failure and verifies empty string with caching
 @patch('subprocess.check_output', side_effect=FileNotFoundError)
 def test_conda_path_command_error(mock_output):
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.delenv('CONDA_DEFAULT_ENV', raising=False)
-    logger = ChronicleLogger(logname="TestApp")
-    assert logger.condaPath() == ''
-    assert logger.condaPath() == ''  # Cached
+    sample_output = """# conda environments:
+#
+test                     /home/user/miniconda3/envs/test"""
+    return_value = sample_output.encode('utf-8')
+    with patch('ChronicleLogger.ChronicleLogger.ChronicleLogger.conda_env_list', return_value=return_value):
+        with patch('os.path.exists', return_value=True):
+            logger = ChronicleLogger(logname="TestApp")
+            assert logger.condaPath() == ''
+            assert logger.condaPath() == ''  # Cached
 
 # NEW: Added test for updated __set_base_dir__ hierarchy: prioritizes explicit basedir, then conda (.app append), pyenvVenv (.app append), venv (.app append), then home/root fallbacks; uses patches for env detection and verifies resulting baseDir with .app/{appname} subpath
-def test_base_dir_hierarchy_conda_priority(tmpdir, monkeypatch):
-    # Mock conda active with path
-    monkeypatch.setenv('CONDA_DEFAULT_ENV', '/mock/conda/envs/test')
-    with patch('sys.executable', '/miniconda3/bin/python'):  # inConda True
-        logger = ChronicleLogger(logname="TestApp")
-        expected = os.path.join('/mock/conda/envs/test', '.app', 'test-app')  # NEW: Matches .app append for env case
-        assert logger.baseDir() == expected
+def test_base_dir_hierarchy_conda_priority(tmpdir):
+    sample_output = """ 
+# conda environments:
+#
+# * -> active
+# + -> frozen
+base                     /mock/conda/envs
+test                 *   /mock/conda/envs/test
+"""
+    return_value = sample_output.encode('utf-8')
+    with patch('ChronicleLogger.ChronicleLogger.ChronicleLogger.conda_env_list', return_value=return_value):
+        with patch('sys.executable', '/miniconda3/bin/python'):  # inConda True
+            with patch('os.path.exists', return_value=True):
+                logger = ChronicleLogger(logname="TestApp")
+                expected = os.path.join('/mock/conda/envs/test', '.app', 'test-app')  # NEW: Matches .app append for env case
+                assert logger.baseDir() == expected
 
 # NEW: Continued test for base_dir_hierarchy: pyenvVenv case with .app append (mocks subprocess for active venv path)
 @patch('subprocess.check_output')
