@@ -65,11 +65,35 @@ def test_logdir_uses_system_path_when_privileged_and_not_set():
             expected = "/var/RootApp/log"  # NEW: Adjusted for preserved CamelCase in binary mode (no kebab); logDir derives from baseDir + /log
             assert logger.logDir() == expected
 
+def test_executable_uses_user_path_when_not_privileged_and_pyenv_and_venv():
+    with patch('ChronicleLogger.Suroot._Suroot.is_root', return_value=False):
+        with patch('sys.executable', os.path.join(os.path.expanduser("~"), ".pyenv/versions/build/bin/python3") ):
+            logger = ChronicleLogger(logname="UserApp")
+            expected = os.path.join(os.path.expanduser("~"), ".pyenv/versions/build/bin/python3")  # NEW: Matches kebab-cased appname in Python mode + derived /log
+            assert sys.executable == expected
+
 def test_logdir_uses_user_path_when_not_privileged_and_not_set():
     with patch('ChronicleLogger.Suroot._Suroot.is_root', return_value=False):
-        logger = ChronicleLogger(logname="UserApp")
-        expected = os.path.join(os.path.expanduser("~"), ".app/user-app", "log")  # NEW: Matches kebab-cased appname in Python mode + derived /log
-        assert logger.logDir() == expected
+        with patch('sys.executable', '/usr/local/python'):
+            logger = ChronicleLogger(logname="UserApp")
+            expected = os.path.join(os.path.expanduser("~"), ".app/user-app", "log")  # NEW: Matches kebab-cased appname in Python mode + derived /log
+            assert logger.logDir() == expected
+
+def test_logdir_uses_user_path_when_not_privileged_and_pyenv():
+    with patch('ChronicleLogger.Suroot._Suroot.is_root', return_value=False):
+        with patch('sys.executable', os.path.join(os.path.expanduser("~"), ".pyenv/shims/python") ):
+            with patch('ChronicleLogger.ChronicleLogger.ChronicleLogger.pyenv_versions', return_value='* 3.12.12 (set)'):
+                logger = ChronicleLogger(logname="UserApp")
+                expected = os.path.join(os.path.expanduser("~"), ".app/user-app", "log")  # NEW: Matches kebab-cased appname in Python mode + derived /log
+                assert logger.logDir() == expected
+
+def test_logdir_uses_user_path_when_not_privileged_and_pyenv_and_venv():
+    with patch('ChronicleLogger.Suroot._Suroot.is_root', return_value=False):
+        with patch('sys.executable', os.path.join(os.path.expanduser("~"), ".pyenv/versions/build/bin/python") ):
+            with patch('ChronicleLogger.ChronicleLogger.ChronicleLogger.pyenv_versions', return_value='* build --> /home/leolio/.pyenv/versions/3.12.12/envs/build (set)'):
+                logger = ChronicleLogger(logname="UserApp")
+                expected = os.path.join("/home/leolio/.pyenv/versions/3.12.12/envs/build/.app/user-app", "log")  # NEW: Matches kebab-cased appname in Python mode + derived /log
+                assert logger.logDir() == expected
 
 def test_logdir_custom_path_overrides_everything(log_dir):
     logger = ChronicleLogger(logname="AnyApp", logdir=log_dir)

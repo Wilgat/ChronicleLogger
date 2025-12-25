@@ -42,8 +42,8 @@ class _Suroot:
 
     CLASSNAME = "Suroot"
     MAJOR_VERSION = 1
-    MINOR_VERSION = 1
-    PATCH_VERSION = 1
+    MINOR_VERSION = 2
+    PATCH_VERSION = 0
 
     _is_root = None
     _can_sudo_nopasswd = None
@@ -123,8 +123,8 @@ except ImportError:
 class ChronicleLogger:
     CLASSNAME = "ChronicleLogger"
     MAJOR_VERSION = 1
-    MINOR_VERSION = 1
-    PATCH_VERSION = 1
+    MINOR_VERSION = 2
+    PATCH_VERSION = 0
 
     LOG_ARCHIVE_DAYS = 7
     LOG_REMOVAL_DAYS = 30
@@ -174,13 +174,17 @@ class ChronicleLogger:
     def inPython(self):
         if self.__is_python__ is None:
             exe_name = sys.executable.split('/')[-1]
-            self.__is_python__ = exe_name in ['python', 'python2', 'python3']
+            if exe_name.startswith("python2.") or exe_name.startswith("python3."):
+                self.__is_python__ = True
+            else:
+                self.__is_python__ = exe_name in ['python', 'python2', 'python3'] 
+            
         return self.__is_python__
 
     # NEW: Added inPyenv method to check if '.pyenv' is in sys.executable (case-sensitive substring match; caches result for efficiency)
     def inPyenv(self):
         if not hasattr(self, '__is_pyenv__'):
-            self.__is_pyenv__ = '.pyenv' in sys.executable
+            self.__is_pyenv__ = '/.pyenv/' in sys.executable
         return self.__is_pyenv__
 
     # NEW: Added venv_path method with lazy evaluation to return os.environ.get('VIRTUAL_ENV', '') (caches the path for efficiency; supports Py2/3 via os.environ)
@@ -196,15 +200,24 @@ class ChronicleLogger:
             self.__in_venv__ = bool(venv_env)
         return self.__in_venv__
 
+    @staticmethod
+    def pyenv_versions():
+        return subprocess.check_output(['pyenv', 'versions'], stderr=subprocess.STDOUT)
+
     # NEW: Added pyenvVenv method with lazy evaluation: if inPyenv, runs 'pyenv versions' via subprocess to parse the active (*) virtualenv path (e.g., from line with '*' and '-->'); returns path as str or '' if not found or not in pyenv (caches for efficiency; handles Py2/3 output decoding)
     def pyenvVenv(self):
         if not hasattr(self, '__pyenv_venv_path__'):
-            if not self.inPyenv():
-                self.__pyenv_venv_path__ = ''
-            else:
+            self.__pyenv_venv_path__ = ''
+            if self.inPyenv():
+                if sys.executable.split("/")[-2]=='bin':
+                    self.__pyenv_venv_path__ = '/'.join(sys.executable.split("/")[:-2])
                 try:
-                    result = subprocess.check_output(['pyenv', 'versions'], stderr=subprocess.STDOUT)
-                    output = result.decode('utf-8') if sys.version_info[0] < 3 else result.decode('utf-8')
+                    result = self.pyenv_versions()
+                    # check for patch from pytest
+                    if hasattr(result,'decode'): 
+                        output = result.decode('utf-8') if sys.version_info[0] < 3 else result.decode('utf-8')
+                    else:
+                        output = result
                     lines = output.strip().split('\n')
                     for line in lines:
                         if '*' in line and '-->' in line:
@@ -216,8 +229,6 @@ class ChronicleLogger:
                             if path and os.path.exists(path):
                                 self.__pyenv_venv_path__ = path
                                 break
-                    else:
-                        self.__pyenv_venv_path__ = ''
                 except (subprocess.CalledProcessError, FileNotFoundError, IndexError):
                     self.__pyenv_venv_path__ = ''
         return self.__pyenv_venv_path__
@@ -230,9 +241,11 @@ class ChronicleLogger:
         return self.__in_conda__
 
     # NEW: Added condaPath method with lazy evaluation: prioritizes os.environ.get('CONDA_DEFAULT_ENV', '') if set; otherwise runs 'conda env list' via subprocess to parse active (*) environment path (e.g., from line with '*' and path column); returns path as str or '' if not found (caches for efficiency; handles Py2/3 output decoding and aligns with env management for cross-distro setups like Ubuntu/Alpine [[1]][doc_1][[3]][doc_3][[6]][doc_6])
+# NEW: Added condaPath method with lazy evaluation: prioritizes os.environ.get('CONDA_DEFAULT_ENV', '') if set; otherwise runs 'conda env list' via subprocess to parse active (*) environment path (e.g., from line with '*' and path column); returns path as str or '' if not found (caches for efficiency; handles Py2/3 output decoding and aligns with env management for cross-distro setups like Ubuntu/Alpine [[1]][doc_1][[3]][doc_3][[6]][doc_6])
     def condaPath(self):
         if not hasattr(self, '__conda_path__'):
             conda_env = os.environ.get('CONDA_DEFAULT_ENV', '')
+            self.__conda_path__ = ''
             if conda_env:
                 self.__conda_path__ = conda_env
             else:
@@ -250,21 +263,9 @@ class ChronicleLogger:
                                 if path and os.path.exists(path):
                                     self.__conda_path__ = path
                                     break
-                    else:
-                        self.__conda_path__ = ''
                 except (subprocess.CalledProcessError, FileNotFoundError):
                     self.__conda_path__ = ''
-            self.__conda_path__ = '' if not self.__conda_path__ else self.__conda_path__
         return self.__conda_path__
-
-    def should_use_system_paths(self):  # NEW: Removed -> bool type hint
-        """
-        Final decision method used by ChronicleLogger.
-        Returns True → use /var/log and /var/<app>
-        Returns False → use ~/.app/<app>/log
-        This logic determine if the real user (root is root, sudo still comes from non-root user) 
-        """
-        return _Suroot.is_root()
 
     def logName(self, logname=None):
         if logname is not None:
@@ -317,6 +318,10 @@ class ChronicleLogger:
     @staticmethod
     def is_root():
         return _Suroot.is_root()
+    
+    @staticmethod
+    def can_sudo():
+        return _Suroot.can_sudo_without_password()
 
     @staticmethod
     def root_or_sudo():
@@ -342,9 +347,14 @@ class ChronicleLogger:
 
     def isDebug(self):
         if not hasattr(self, '__is_debug__'):
+            debug=os.getenv("DEBUG", "").lower()
             self.__is_debug__ = (
-                os.getenv("DEBUG", "").lower() == "show" or
-                os.getenv("debug", "").lower() == "show"
+                debug == "show" or
+                debug == "show" or
+                debug == "true" or
+                debug == "true" or
+                debug == "1" or
+                debug == "1" 
             )
         return self.__is_debug__
 
