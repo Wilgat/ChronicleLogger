@@ -1,0 +1,24 @@
+
+[2025-12-25 12:45:23] pid:37997 [INFO] @command :] Example info command executed
+
+[2025-12-25 12:45:42] pid:38001 [INFO] @command :] Example info command executed
+
+[2025-12-25 12:46:18] pid:38003 [INFO] @logger :] Using test/.app/logged-example/log/logged-example-20251225.log
+[2025-12-25 12:46:18] pid:38003 [DEBUG] @main :] logged-example v1.2.2 (/home/leolio/miniconda3/envs/test/lib/python3.12/site-packages/LoggedExample/cli.py) started in DEBUG mode
+[2025-12-25 12:46:18] pid:38003 [INFO] @main :] >> ChronicleLogger v1.2.0
+[2025-12-25 12:46:18] pid:38003 [INFO] @command :] Example info command executed
+
+[2025-12-25 12:55:02] pid:38882 [INFO] @logger :] Using test/.app/logged-example/log/logged-example-20251225.log
+[2025-12-25 12:55:02] pid:38882 [DEBUG] @main :] logged-example v1.2.2 (/home/leolio/miniconda3/envs/test/lib/python3.12/site-packages/LoggedExample/cli.py) started in DEBUG mode
+[2025-12-25 12:55:02] pid:38882 [INFO] @main :] >> ChronicleLogger v1.2.0
+[2025-12-25 12:55:02] pid:38882 [INFO] @command :] Example info command executed
+
+[2025-12-25 12:56:03] pid:38904 [INFO] @logger :] Using test/.app/logged-example/log/logged-example-20251225.log
+[2025-12-25 12:56:03] pid:38904 [DEBUG] @main :] logged-example v1.2.2 (/home/leolio/miniconda3/envs/test/lib/python3.12/site-packages/LoggedExample/cli.py) started in DEBUG mode
+[2025-12-25 12:56:03] pid:38904 [INFO] @main :] >> ChronicleLogger v1.2.0
+[2025-12-25 12:56:03] pid:38904 [INFO] @command :] Example info command executed
+
+[2025-12-25 12:57:26] pid:38933 [INFO] @logger :] Using test/.app/logged-example/log/logged-example-20251225.log
+[2025-12-25 12:57:26] pid:38933 [DEBUG] @main :] logged-example v1.2.2 (/home/leolio/miniconda3/envs/test/lib/python3.12/site-packages/LoggedExample/cli.py) started in DEBUG mode
+[2025-12-25 12:57:26] pid:38933 [INFO] @main :] >> ChronicleLogger v1.2.1
+[2025-12-25 12:57:26] pid:38933 [INFO] @command :] Example info command executed

@@ -43,7 +43,7 @@ class _Suroot:
     CLASSNAME = "Suroot"
     MAJOR_VERSION = 1
     MINOR_VERSION = 2
-    PATCH_VERSION = 0
+    PATCH_VERSION = 1
 
     _is_root = None
     _can_sudo_nopasswd = None
@@ -124,7 +124,7 @@ class ChronicleLogger:
     CLASSNAME = "ChronicleLogger"
     MAJOR_VERSION = 1
     MINOR_VERSION = 2
-    PATCH_VERSION = 0
+    PATCH_VERSION = 1
 
     LOG_ARCHIVE_DAYS = 7
     LOG_REMOVAL_DAYS = 30
@@ -244,27 +244,23 @@ class ChronicleLogger:
 # NEW: Added condaPath method with lazy evaluation: prioritizes os.environ.get('CONDA_DEFAULT_ENV', '') if set; otherwise runs 'conda env list' via subprocess to parse active (*) environment path (e.g., from line with '*' and path column); returns path as str or '' if not found (caches for efficiency; handles Py2/3 output decoding and aligns with env management for cross-distro setups like Ubuntu/Alpine [[1]][doc_1][[3]][doc_3][[6]][doc_6])
     def condaPath(self):
         if not hasattr(self, '__conda_path__'):
-            conda_env = os.environ.get('CONDA_DEFAULT_ENV', '')
-            self.__conda_path__ = ''
-            if conda_env:
-                self.__conda_path__ = conda_env
-            else:
-                try:
-                    # Run 'conda env list' and capture output
-                    result = subprocess.check_output(['conda', 'env', 'list'], stderr=subprocess.STDOUT)
-                    output = result.decode('utf-8') if sys.version_info[0] < 3 else result.decode('utf-8')
-                    lines = output.strip().split('\n')
-                    for line in lines:
-                        if '*' in line:
-                            # Parse columns: env_name (spaces-padded), path (after spaces)
-                            parts = re.split(r'\s{2,}', line.strip())
-                            if len(parts) >= 2:
-                                path = parts[-1].strip()
-                                if path and os.path.exists(path):
-                                    self.__conda_path__ = path
-                                    break
-                except (subprocess.CalledProcessError, FileNotFoundError):
-                    self.__conda_path__ = ''
+            try:
+                # Run 'conda env list' and capture output
+                result = subprocess.check_output(['conda', 'env', 'list'], stderr=subprocess.STDOUT)
+                output = result.decode('utf-8') if sys.version_info[0] < 3 else result.decode('utf-8')
+                lines = output.strip().split('\n')
+                for line in lines:
+                    if '*' in line:
+                        # Parse columns: env_name (spaces-padded), path (after spaces)
+                        parts = re.split(r'\s{2,}', line.strip())
+                        if len(parts) >= 2:
+                            print(parts)
+                            path = parts[-1].strip()
+                            if path and os.path.exists(path):
+                                self.__conda_path__ = path
+                                break
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                self.__conda_path__ = ''
         return self.__conda_path__
 
     def logName(self, logname=None):
@@ -348,12 +344,11 @@ class ChronicleLogger:
     def isDebug(self):
         if not hasattr(self, '__is_debug__'):
             debug=os.getenv("DEBUG", "").lower()
+            if not debug:
+                debug=os.getenv("debug", "").lower()
             self.__is_debug__ = (
                 debug == "show" or
-                debug == "show" or
                 debug == "true" or
-                debug == "true" or
-                debug == "1" or
                 debug == "1" 
             )
         return self.__is_debug__

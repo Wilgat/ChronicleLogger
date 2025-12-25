@@ -89,10 +89,10 @@ Build: `hatch build`. Install wheel: `pip install dist/chroniclelogger-1.1.1-py3
 pip install LoggedExample
 
 # Run the demo
-logged-example --help
+LoggedExample --help
 
 # Example with debug mode enabled
-DEBUG=show logged-example run
+DEBUG=show LoggedExample run
 ```
 
 This will create log files in your current environment's isolated path (e.g. `~/.app/logged-example/log/` or inside your venv/conda/pyenv environment), showing structured, timestamped logs with rotation and archiving in action.
