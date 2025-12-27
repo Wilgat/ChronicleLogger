@@ -20,7 +20,30 @@ TEST_DIR = os.path.dirname(__file__)
 SRC_DIR = os.path.abspath(os.path.join(TEST_DIR, "..", "src"))
 sys.path.insert(0, SRC_DIR)
 
-from ChronicleLogger import ChronicleLogger
+from ChronicleLogger import ChronicleLogger,TimeProvider
+
+class FakeTimeProvider(TimeProvider):
+    def __init__(self):
+        self.current_time = datetime(2025, 12, 25, 14, 30, 0)  # Fixed starting point
+        self._delta = timedelta(0)
+
+    def now(self):
+        return self.current_time + self._delta
+
+    def timedelta(self, **kwargs):
+        return timedelta(**kwargs)
+
+    def advance(self, **kwargs):
+        """Advance simulated time by given amount (days, hours, etc.)"""
+        self._delta += timedelta(**kwargs)
+
+    def strftime(self, dt, fmt):
+        return dt.strftime(fmt)
+
+@pytest.fixture
+def fake_time_provider():
+    """Fixture providing a fake, controllable time provider for tests."""
+    return FakeTimeProvider()
 
 # test/test_ChronicleLogger.py
 
@@ -32,8 +55,12 @@ def log_dir(tmpdir):  # NEW: Changed from tmp_path to tmpdir for Py2 compat (pin
     return str(log_path)  # NEW: Ensure str for cross-version ops
 
 @pytest.fixture
-def logger(log_dir):
-    return ChronicleLogger(logname="TestApp", logdir=log_dir)  # NEW: Pass str(log_dir)
+def logger(log_dir, fake_time_provider):
+    return ChronicleLogger(
+        logname="TestApp",
+        logdir=log_dir,
+        time_provider=fake_time_provider
+    )
 
 def test_directory_created_on_init_when_logdir_given(log_dir):
     assert not os.path.exists(log_dir)  # NEW: Use os.path.exists instead of .exists() for Py2 compat
@@ -315,3 +342,118 @@ def test_log_dir_explicit_override():
     explicit_log = '/mock/explicit/log'
     logger = ChronicleLogger(logname="TestApp", logdir=explicit_log)
     assert logger.logDir() == explicit_log  # Overrides baseDir derivation
+
+def test_current_log_file_path(log_dir, logger):
+    # Write something to force file creation
+    logger.log_message("Test message")
+    
+    current_file = logger.currentLogFile()
+    assert current_file != ""
+    assert current_file.startswith(log_dir)
+    assert current_file.endswith(".log")
+    
+    today = datetime.now().strftime("%Y%m%d")
+    expected = os.path.join(log_dir, f"test-app-{today}.log")
+    assert current_file == expected
+
+
+def test_rotation_updates_current_log_file(log_dir, logger, fake_time_provider):
+    # Use injected fake time provider
+    logger.log_message("Day 1")
+    day1_file = logger.currentLogFile()
+    assert "20251225" in day1_file
+    
+    fake_time_provider.advance(days=1)
+    logger.log_message("Day 2")
+    
+    day2_file = logger.currentLogFile()
+    assert "20251226" in day2_file
+    assert day2_file != day1_file
+
+def test_archiving_with_fake_time(log_dir, fake_time_provider):
+    """
+    Test that very old logs (> LOG_REMOVAL_DAYS) are deleted (not just archived),
+    and that currentLogFile() correctly reflects the active log file after rotation/cleanup.
+    """
+    # Use injected fake time provider
+    logger = ChronicleLogger(
+        logname="TestApp",
+        logdir=log_dir,
+        time_provider=fake_time_provider
+    )
+
+    # Step 1: Create a very old log file (40 days old)
+    old_date = fake_time_provider.now() - fake_time_provider.timedelta(days=40)
+    old_filename = f"test-app-{old_date.strftime('%Y%m%d')}.log"
+    old_path = os.path.join(log_dir, old_filename)
+    with open(old_path, 'w') as f:
+        f.write("old content from 40 days ago")
+
+    # Step 2: Remember initial current log file (should be today's file)
+    initial_current_file = logger.currentLogFile()
+    assert initial_current_file != ""
+    assert initial_current_file.endswith(".log")
+    assert os.path.basename(initial_current_file).startswith("test-app-")
+
+    # Step 3: Advance time far enough to trigger removal (past 30 days)
+    fake_time_provider.advance(days=41)
+
+    # Step 4: Write a new message → this triggers real rotation + cleanup
+    logger.log_message("Trigger cleanup and rotation now")
+
+    # Step 5: Verify archiving/removal behavior
+    assert not os.path.exists(old_path)                    # original file deleted
+    assert not os.path.exists(old_path + ".tar.gz")       # no archive left (past removal threshold)
+
+    # Step 6: Verify currentLogFile() is updated correctly
+    new_current_file = logger.currentLogFile()
+    assert new_current_file != ""
+    assert new_current_file != initial_current_file        # should be a new file after rotation
+    assert new_current_file.endswith(".log")
+    
+    today_str = fake_time_provider.now().strftime("%Y%m%d")
+    expected_new_filename = f"test-app-{today_str}.log"
+    assert os.path.basename(new_current_file) == expected_new_filename
+
+    # Optional: check that the new file actually contains the trigger message
+    with open(new_current_file, 'r') as f:
+        content = f.read()
+        assert "Trigger cleanup and rotation now" in content
+
+def test_archiving_with_fake_time(log_dir, fake_time_provider):
+    logger = ChronicleLogger(
+        logname="TestApp",
+        logdir=log_dir,
+        time_provider=fake_time_provider
+    )
+
+    # BEFORE advance: current file should be for day 0 (20251225)
+    initial_current_file = logger.currentLogFile()
+    assert initial_current_file != ""
+    assert initial_current_file.endswith(".log")
+    assert "test-app-20251225" in initial_current_file
+    assert os.path.exists(initial_current_file)
+
+    # Create old file (40 days old)
+    old_date = fake_time_provider.now() - fake_time_provider.timedelta(days=40)
+    old_filename = f"test-app-{old_date.strftime('%Y%m%d')}.log"
+    old_path = os.path.join(log_dir, old_filename)
+    with open(old_path, 'w') as f:
+        f.write("old content from 40 days ago")
+
+    # Advance 41 days → simulated date becomes ~Feb 4, 2026
+    fake_time_provider.advance(days=41)
+
+    # Write message → triggers rotation (new filename for current simulated date)
+    logger.log_message("Trigger cleanup and rotation")
+
+    # AFTER: currentLogFile() should now point to new date's file
+    new_current_file = logger.currentLogFile()
+    assert new_current_file != ""
+    assert new_current_file != initial_current_file
+    assert "test-app-20260204" in new_current_file  # or whatever the new date is
+    assert os.path.exists(new_current_file)
+
+    # Old file should be gone (removed, no archive)
+    assert not os.path.exists(old_path)
+    assert not os.path.exists(old_path + ".tar.gz")

@@ -1,6 +1,6 @@
 # ChronicleLogger
 
-A robust, POSIX-compliant logging utility for Python applications, supporting Python 2.7 and 3.x with optional Cython compilation for enhanced performance. It handles daily log rotation, automatic archiving (tar.gz for logs >7 days), removal (>30 days), privilege-aware paths (/var/log for root, ~/.app for users), and structured output with timestamps, PIDs, levels, and components. No external dependencies beyond the standard library; semantic version 1.1.1.
+A robust, POSIX-compliant logging utility for Python applications, supporting Python 2.7 and 3.x with optional Cython compilation for enhanced performance. It handles daily log rotation, automatic archiving (tar.gz for logs >7 days), removal (>30 days), privilege-aware paths (/var/log for root, ~/.app for users), and structured output with timestamps, PIDs, levels, and components. No external dependencies beyond the standard library; semantic version 1.2.3.
 
 - **PyPI Package URL**: https://pypi.org/project/ChronicleLogger/
 - **Supported Environments**: Seamlessly integrates with venv, pyenv, pyenv-virtualenv, Anaconda, and Miniconda for isolated logging paths.

@@ -1,69 +1,88 @@
 # -*- coding: utf-8 -*-
-# NEW: __future__ imports for Py2/3 compatibility (print_function for print(..., file=), absolute_import for relative ., unicode_literals for str/bytes handling, division for /)
+# src/chronicle_logger/ChronicleLogger.py
+"""
+ChronicleLogger - High-performance, cross-version (Python 2.7 ↔ 3.x) logging utility
+
+Features:
+- Daily log rotation: <appname>-YYYYMMDD.log
+- Automatic archiving to tar.gz after 7 days
+- Removal of logs older than 30 days
+- Privilege-aware paths:
+  - Real root → /var/<appname>/log
+  - Non-root (including sudo) → ~/.app/<appname>/log
+- Automatic detection & isolation in venv / pyenv / pyenv-virtualenv / conda
+- Console mirroring (stdout + stderr)
+- UTF-8 safe byte/string handling
+- Lazy evaluation for performance
+- No external dependencies except standard library
+"""
+
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-# src/chronicle_logger/ChronicleLogger.py
 import os
 import sys
 import ctypes
 import tarfile
 import re
 from datetime import datetime
-# NEW: Added import for subprocess to execute pyenv commands in pyenvVenv method
 import subprocess
 
-
-# Correct import for your actual file: Suroot.py (capital S)
 from .Suroot import _Suroot
+from .TimeProvider import TimeProvider
 
 try:
     basestring
 except NameError:
     basestring = str
 
-# NEW: io.open fallback for encoding='utf-8' support in Py2 (io.open added in Py2.6; use conditional for safety)
 try:
     from io import open as io_open
 except ImportError:
     io_open = open
 
-# baseDir should be independent
-# It should never be affected by root/sudo/normal user
-# It is for cross-application configuration, not logging
-# Getting the parent of logDir() is trivial if needed
-# We should not couple them
-# 
-# baseDir()  → /var/myapp        ← user sets this explicitly
-#              /home/user/.myenv
-#              /opt/myapp
-# 
-# logDir()   → /var/log/myapp   ← automatically derived only if user is root
-#              ~/.app/myapp/log ← if user is non-root (no matter is sudo or not )
-
 
 class ChronicleLogger:
+    """Main logging class with environment-aware, privilege-aware, rotating logs."""
+
     CLASSNAME = "ChronicleLogger"
     MAJOR_VERSION = 1
     MINOR_VERSION = 2
-    PATCH_VERSION = 2
+    PATCH_VERSION = 3
 
     LOG_ARCHIVE_DAYS = 7
     LOG_REMOVAL_DAYS = 30
 
-    def __init__(self, logname=b"app", logdir=b"", basedir=b""):
+    def __init__(self, logname=b"app", logdir=b"", basedir=b"", time_provider=None):
+        """
+        Initialize the logger with application name and optional custom paths.
+
+        Args:
+            logname (bytes or str): Application/logger name
+                                   (will be automatically kebab-cased in Python mode)
+            logdir (bytes or str, optional): Explicit log directory path.
+                                            If empty → auto-detected
+            basedir (bytes or str, optional): Explicit base directory (configs).
+                                             If empty → auto-detected
+
+        Detection priority when not provided explicitly:
+            1. Explicit value
+            2. Active conda/pyenv/venv environment + /.app/<appname>
+            3. User home: ~/.app/<appname> (non-root) or /var/<appname> (root)
+
+        Side effects:
+            - Creates log directory if needed
+            - Tests write permission by writing an empty line
+        """
         self.__logname__ = None
         self.__basedir__ = None
         self.__logdir__ = None
         self.__old_logfile_path__ = ctypes.c_char_p(b"")
         self.__is_python__ = None
-
+        self.time_provider = time_provider or TimeProvider()
         if not logname or logname in (b"", ""):
             return
 
         self.logName(logname)
-        # After this, the logDir() should return the log path
-        # for root it's should starts with /etc/appname/log/...
-        # for non-root (no matter is sudo or not ) with ~/.app/appname/log
         self.baseDir(basedir if basedir else "")
         if logdir:
             self.logDir(logdir)
@@ -76,46 +95,110 @@ class ChronicleLogger:
         if self._has_write_permission(self.__current_logfile_path__):
             self.write_to_file("\n")
 
+    def prn(self, msg):
+        """Simple wrapper: print message to stdout."""
+        print(msg)
+
+    def prn_err(self, msg):
+        """Simple wrapper: print message to stderr."""
+        print(msg, file=sys.stderr)
+
     def strToByte(self, value):
+        """
+        Convert string, bytes or None → bytes (UTF-8).
+
+        Args:
+            value: str, bytes or None
+
+        Returns:
+            bytes or None
+
+        Raises:
+            TypeError: on unsupported type
+        """
         if isinstance(value, basestring):
-            return value.encode('utf-8')  # NEW: Explicit utf-8 for Py3 bytes consistency
+            return value.encode('utf-8')
         elif value is None or isinstance(value, bytes):
             return value
-        # NEW: Replaced f-string with .format() for Py2 compat
         raise TypeError("Expected str/bytes/None, got {0}".format(type(value).__name__))
 
     def byteToStr(self, value):
+        """
+        Convert bytes, str or None → string (UTF-8 decoded).
+
+        Args:
+            value: str, bytes or None
+
+        Returns:
+            str or None
+
+        Raises:
+            TypeError: on unsupported type
+        """
         if value is None or isinstance(value, basestring):
             return value
         elif isinstance(value, bytes):
-            return value.decode('utf-8')  # NEW: Explicit utf-8 for Py2/3 consistency
-        # NEW: Replaced f-string with .format()
+            return value.decode('utf-8')
         raise TypeError("Expected str/bytes/None, got {0}".format(type(value).__name__))
 
+    def split_cmd(self, cmd_path):
+        """Split path into components using OS-appropriate separator."""
+        if "/" in cmd_path:
+            return cmd_path.split("/")
+        if "\\" in cmd_path:
+            return cmd_path.split("\\")
+        return [cmd_path]
+
+    def cmd_name(self, cmd_path):
+        """Extract basename from executable path."""
+        return self.split_cmd(cmd_path)[-1]
+
     def inPython(self):
+        """
+        Check whether we are running in a Python interpreter (vs Cython compiled binary).
+
+        Returns:
+            bool: True if running via python*/python[23].*
+        """
         if self.__is_python__ is None:
-            exe_name = sys.executable.split('/')[-1]
+            exe_name = self.cmd_name(sys.executable)
             if exe_name.startswith("python2.") or exe_name.startswith("python3."):
                 self.__is_python__ = True
             else:
-                self.__is_python__ = exe_name in ['python', 'python2', 'python3'] 
-            
+                self.__is_python__ = exe_name in ['python', 'python2', 'python3']
         return self.__is_python__
 
-    # NEW: Added inPyenv method to check if '.pyenv' is in sys.executable (case-sensitive substring match; caches result for efficiency)
     def inPyenv(self):
+        """
+        Check if interpreter is managed by pyenv.
+
+        Detection method: '/.pyenv/' substring in sys.executable (case-sensitive)
+
+        Returns:
+            bool
+        """
         if not hasattr(self, '__is_pyenv__'):
             self.__is_pyenv__ = '/.pyenv/' in sys.executable
         return self.__is_pyenv__
 
-    # NEW: Added venv_path method with lazy evaluation to return os.environ.get('VIRTUAL_ENV', '') (caches the path for efficiency; supports Py2/3 via os.environ)
     def venv_path(self):
+        """
+        Get path of active standard Python virtual environment (venv).
+
+        Returns:
+            str: path or empty string
+        """
         if not hasattr(self, '__venv_path__'):
             self.__venv_path__ = os.environ.get('VIRTUAL_ENV', '')
         return self.__venv_path__
 
-    # NEW: Added inVenv method with lazy evaluation to check if in virtual environment mode (True if VIRTUAL_ENV is set and non-empty; caches result for efficiency)
     def inVenv(self):
+        """
+        Check if running inside a standard Python venv.
+
+        Returns:
+            bool
+        """
         if not hasattr(self, '__in_venv__'):
             venv_env = os.environ.get('VIRTUAL_ENV', '')
             self.__in_venv__ = bool(venv_env)
@@ -123,19 +206,35 @@ class ChronicleLogger:
 
     @staticmethod
     def pyenv_versions():
+        """Execute 'pyenv versions' command and return output."""
         return subprocess.check_output(['pyenv', 'versions'], stderr=subprocess.STDOUT)
 
-    # NEW: Added pyenvVenv method with lazy evaluation: if inPyenv, runs 'pyenv versions' via subprocess to parse the active (*) virtualenv path (e.g., from line with '*' and '-->'); returns path as str or '' if not found or not in pyenv (caches for efficiency; handles Py2/3 output decoding)
+    def grand_path(self, path):
+        """Get parent-parent directory (two levels up)."""
+        if "/" in path:
+            return "/".join(self.split_cmd(path)[:-2])
+        if "\\" in path:
+            return "\\".join(self.split_cmd(path)[:-2])
+        return ''
+
     def pyenvVenv(self):
+        """
+        Get path of currently active pyenv-virtualenv environment.
+
+        Uses 'pyenv versions' output to find active (*) venv.
+        Caches result.
+
+        Returns:
+            str: venv path or empty string
+        """
         if not hasattr(self, '__pyenv_venv_path__'):
             self.__pyenv_venv_path__ = ''
             if self.inPyenv():
-                if sys.executable.split("/")[-2]=='bin':
-                    self.__pyenv_venv_path__ = '/'.join(sys.executable.split("/")[:-2])
+                if self.split_cmd(sys.executable)[-2] == 'bin':
+                    self.__pyenv_venv_path__ = self.grand_path(sys.executable)
                 try:
                     result = self.pyenv_versions()
-                    # check for patch from pytest
-                    if hasattr(result,'decode'): 
+                    if hasattr(result, 'decode'):
                         output = result.decode('utf-8') if sys.version_info[0] < 3 else result.decode('utf-8')
                     else:
                         output = result
@@ -144,7 +243,6 @@ class ChronicleLogger:
                         if '*' in line and '-->' in line:
                             path_start = line.find('--> ') + 4
                             path = line[path_start:].strip()
-                            # NEW: Trim trailing "(set by PYENV_VERSION)" if present: rsplit on ' (' (space before paren) once, take [0], then strip (matches pyenv format; preserves cache and exists check without altering Py2/3 decode)
                             if ' (' in path:
                                 path = path.rsplit(' (', 1)[0].strip()
                             if path and os.path.exists(path):
@@ -154,8 +252,13 @@ class ChronicleLogger:
                     self.__pyenv_venv_path__ = ''
         return self.__pyenv_venv_path__
 
-    # NEW: Added inConda method with lazy evaluation to check if in Conda environment (True if 'conda' in sys.executable or CONDA_DEFAULT_ENV is set and non-empty; caches result for efficiency; complements pyenv/venv detection for multi-tool isolation in builds like Cython .so files [[3]][doc_3][[6]][doc_6])
     def inConda(self):
+        """
+        Check if running inside a Conda/Anaconda/Miniconda environment.
+
+        Returns:
+            bool
+        """
         if not hasattr(self, '__in_conda__'):
             conda_env = os.environ.get('CONDA_DEFAULT_ENV', '')
             self.__in_conda__ = bool(conda_env) or 'conda' in sys.executable
@@ -163,46 +266,59 @@ class ChronicleLogger:
 
     @staticmethod
     def conda_env_list():
-        result = subprocess.check_output(['conda', 'env', 'list'], stderr=subprocess.STDOUT)
-        return result
+        """Execute 'conda env list' command and return output."""
+        return subprocess.check_output(['conda', 'env', 'list'], stderr=subprocess.STDOUT)
 
-    # NEW: Added condaPath method with lazy evaluation: prioritizes os.environ.get('CONDA_DEFAULT_ENV', '') if set; otherwise runs 'conda env list' via subprocess to parse active (*) environment path (e.g., from line with '*' and path column); returns path as str or '' if not found (caches for efficiency; handles Py2/3 output decoding and aligns with env management for cross-distro setups like Ubuntu/Alpine [[1]][doc_1][[3]][doc_3][[6]][doc_6])
-    # NEW: Added condaPath method with lazy evaluation: prioritizes os.environ.get('CONDA_DEFAULT_ENV', '') if set; otherwise runs 'conda env list' via subprocess to parse active (*) environment path (e.g., from line with '*' and path column); returns path as str or '' if not found (caches for efficiency; handles Py2/3 output decoding and aligns with env management for cross-distro setups like Ubuntu/Alpine [[1]][doc_1][[3]][doc_3][[6]][doc_6])
     def condaPath(self):
+        """
+        Get path of currently active Conda environment.
+
+        Priority: CONDA_DEFAULT_ENV → parse 'conda env list'
+
+        Returns:
+            str: env path or empty string
+        """
         if not hasattr(self, '__conda_path__'):
             self.__conda_path__ = ''
             try:
-                # Run 'conda env list' and capture output
                 result = ChronicleLogger.conda_env_list()
                 output = result.decode('utf-8') if sys.version_info[0] < 3 else result.decode('utf-8')
                 lines = output.strip().split('\n')
                 for line in lines:
-                    if "#" not in line:
-                        if '*' in line:
-                        # Parse columns: env_name (spaces-padded), path (after spaces)
-                            parts = re.split(r'\s{2,}', line.strip())
-                            if len(parts) >= 2:
-                                print(parts)
-                                path = parts[-1].strip()
-                                if path and os.path.exists(path):
-                                    self.__conda_path__ = path
-                                    break
+                    if "#" not in line and '*' in line:
+                        parts = re.split(r'\s{2,}', line.strip())
+                        if len(parts) >= 2:
+                            path = parts[-1].strip()
+                            if path and os.path.exists(path):
+                                self.__conda_path__ = path
+                                break
             except (subprocess.CalledProcessError, FileNotFoundError):
                 self.__conda_path__ = ''
         return self.__conda_path__
 
     def logName(self, logname=None):
+        """
+        Get or set the logger name.
+
+        In Python mode (not Cython): converts CamelCase → kebab-case
+
+        Args:
+            logname (bytes/str/None): new name or None to get current
+
+        Returns:
+            str: current name (decoded)
+        """
         if logname is not None:
             self.__logname__ = self.strToByte(logname)
             if self.inPython():
-                name = self.__logname__.decode('utf-8')  # NEW: Explicit decode
+                name = self.__logname__.decode('utf-8')
                 name = re.sub(r'(?<!^)(?=[A-Z])', '-', name).lower()
-                self.__logname__ = name.encode('utf-8')  # NEW: Explicit encode
+                self.__logname__ = name.encode('utf-8')
         else:
-            return self.__logname__.decode('utf-8')  # NEW: Explicit decode
+            return self.__logname__.decode('utf-8')
 
-    # NEW: Modified __set_base_dir__ to append "/.app/{appname}" to environment paths for inConda (using condaPath()), pyenvVenv(), and venv (using venv_path()) cases, ensuring sub-directory isolation within env roots (e.g., "/path/to/conda/envs/test/.app/{appname}"); maintains explicit basedir priority, lazy evaluation, and fallbacks to home-based ".app/{appname}" or root "/var/{appname}" without appends, aligning with hidden folder patterns for app configs in non-root setups [[1]][doc_1][[5]][doc_5][[6]][doc_6]
     def __set_base_dir__(self, basedir=b""):
+        """Internal: lazy set base directory according to environment hierarchy."""
         basedir_str = self.byteToStr(basedir)
         if basedir_str and basedir_str != '':
             self.__basedir__ = basedir_str
@@ -211,20 +327,17 @@ class ChronicleLogger:
             if not hasattr(self, '__basedir__') or self.__basedir__ is None:
                 conda_path = self.condaPath()
                 if self.inConda() and conda_path:
-                    env_base = os.path.join(conda_path, ".app", appname)
-                    self.__basedir__ = env_base
+                    self.__basedir__ = os.path.join(conda_path, ".app", appname)
                 else:
                     pyenv_path = self.pyenvVenv()
                     if pyenv_path:
-                        env_base = os.path.join(pyenv_path, ".app", appname)
-                        self.__basedir__ = env_base
+                        self.__basedir__ = os.path.join(pyenv_path, ".app", appname)
                     else:
                         venv_path = self.venv_path()
                         if venv_path:
-                            env_base = os.path.join(venv_path, ".app", appname)
-                            self.__basedir__ = env_base
+                            self.__basedir__ = os.path.join(venv_path, ".app", appname)
                         else:
-                            user_home = os.path.expanduser("~")
+                            user_home = ChronicleLogger.user_home()
                             app_path = os.path.join(user_home, ".app", appname)
                             if self.is_root():
                                 self.__basedir__ = "/var/{0}".format(appname)
@@ -232,6 +345,15 @@ class ChronicleLogger:
                                 self.__basedir__ = app_path
 
     def baseDir(self, basedir=None):
+        """
+        Get or set base directory (configs, not logs).
+
+        Args:
+            basedir (bytes/str/None): new value or None to get
+
+        Returns:
+            str: current base directory (decoded)
+        """
         if basedir is not None:
             self.__set_base_dir__(basedir)
         else:
@@ -240,28 +362,47 @@ class ChronicleLogger:
             return self.__basedir__
 
     @staticmethod
+    def user_home():
+        """Get current user's home directory."""
+        return os.path.expanduser("~")
+
+    @staticmethod
     def is_root():
+        """Check if current effective user is root."""
         return _Suroot.is_root()
-    
+
     @staticmethod
     def can_sudo():
+        """Check if sudo is available without password."""
         return _Suroot.can_sudo_without_password()
 
     @staticmethod
     def root_or_sudo():
+        """Check if we are root or can become root without password."""
         return _Suroot.can_sudo_without_password() or _Suroot.is_root()
 
-    # NEW: Rewritten __set_log_dir__ with lazy evaluation: first ensure baseDir is set via __set_base_dir__(); then derive logdir as baseDir + "/log" (appname-integrated via baseDir logic; overrides explicit logdir if provided; uses .format() for Py2 compat and aligns with prior dir derivation patterns [[1]][doc_1][[4]][doc_4])
     def __set_log_dir__(self, logdir=b""):
+        """Internal: lazy set log directory (defaults to baseDir/log)."""
         logdir_str = self.byteToStr(logdir)
         if logdir_str and logdir_str != '':
             self.__logdir__ = logdir_str
         else:
-            self.baseDir()  # Ensure baseDir is lazily set first
+            self.baseDir()  # ensure baseDir is computed
             appname = self.byteToStr(self.__logname__)
             self.__logdir__ = "{0}/log".format(self.__basedir__)
 
     def logDir(self, logdir=None):
+        """
+        Get or set log directory path.
+
+        Default when unset: baseDir() + "/log"
+
+        Args:
+            logdir (bytes/str/None): new value or None to get
+
+        Returns:
+            str: current log directory (decoded)
+        """
         if logdir is not None:
             self.__set_log_dir__(logdir)
         else:
@@ -270,55 +411,94 @@ class ChronicleLogger:
             return self.__logdir__
 
     def isDebug(self):
+        """
+        Check if debug mode is enabled via environment variable.
+
+        Accepted values (case-insensitive): "show", "true", "1"
+
+        Returns:
+            bool
+        """
         if not hasattr(self, '__is_debug__'):
-            debug=os.getenv("DEBUG", "").lower()
+            debug = os.getenv("DEBUG", "").lower()
             if not debug:
-                debug=os.getenv("debug", "").lower()
+                debug = os.getenv("debug", "").lower()
             self.__is_debug__ = (
                 debug == "show" or
                 debug == "true" or
-                debug == "1" 
+                debug == "1"
             )
         return self.__is_debug__
 
     @staticmethod
     def class_version():
-        # NEW: Replaced f-string with .format()
+        """Return current version string of this class."""
         return "{0.CLASSNAME} v{0.MAJOR_VERSION}.{0.MINOR_VERSION}.{0.PATCH_VERSION}".format(ChronicleLogger)
 
     def ensure_directory_exists(self, dir_path):
-        # Example for ensure_directory_exists (around line 172)
+        """
+        Create directory recursively if it doesn't exist.
+
+        Args:
+            dir_path (str/bytes): directory to create
+
+        Side effects:
+            Prints creation message to stdout on success
+        """
         try:
             os.makedirs(dir_path)
-            print("Created directory: {0}".format(dir_path))
+            self.prn("Created directory: {0}".format(dir_path))
         except Exception:
-            # NEW: Version-conditional exception syntax for Py2/3 compat (comma in Py2, 'as' in Py3)
             if sys.version_info[0] < 3:
                 exc_type, exc_value, exc_tb = sys.exc_info()
-                e = exc_value  # Bind e for Py2
+                e = exc_value
             else:
                 exc_type, exc_value, exc_tb = sys.exc_info()
-                e = exc_value  # Use as e implicitly via exc_info for consistency
-            #self.log_message("Failed to create directory {0}: {1}".format(dir_path, e), level="ERROR")
+                e = exc_value
 
     def _get_log_filename(self):
-        date_str = datetime.now().strftime('%Y%m%d')
-        # NEW: Replaced f-string with .format(); explicit decode/encode for path handling
+        """
+        Generate full path to current daily log file.
+
+        Returns:
+            bytes: encoded path
+        """
+        date_str = self.time_provider.strftime(
+            self.time_provider.now(), '%Y%m%d'
+        )        
         dir_decoded = self.__logdir__.decode('utf-8') if isinstance(self.__logdir__, bytes) else self.__logdir__
         name_decoded = self.__logname__.decode('utf-8')
         filename = "{0}/{1}-{2}.log".format(dir_decoded, name_decoded, date_str)
         return ctypes.c_char_p(filename.encode('utf-8')).value
 
     def log_message(self, message, level=b"INFO", component=b""):
-        pid = os.getpid()
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        """
+        Main logging method.
 
-        component_str = " @{0}".format(self.byteToStr(component)) if component else ""  # NEW: Replaced f-string with .format()
+        Format example:
+            [2025-12-25 14:30:45] pid:12345 [INFO] @database :] Connected successfully
+
+        Features:
+            - Automatic daily rotation
+            - Archiving & cleanup on rotation
+            - Console output (stdout/stderr)
+            - File write with permission check
+
+        Args:
+            message (str/bytes): log content
+            level (bytes/str): INFO/WARNING/ERROR/CRITICAL/FATAL/DEBUG
+            component (bytes/str): optional subsystem name
+        """
+        pid = os.getpid()
+        timestamp = self.time_provider.strftime(
+            self.time_provider.now(), "%Y-%m-%d %H:%M:%S"
+        )
+        component_str = " @{0}".format(self.byteToStr(component)) if component else ""
         message_str = self.byteToStr(message)
         level_str = self.byteToStr(level).upper()
 
-        # NEW: Replaced f-string with .format()
-        log_entry = "[{0}] pid:{1} [{2}]{3} :] {4}\n".format(timestamp, pid, level_str, component_str, message_str)
+        log_entry = "[{0}] pid:{1} [{2}]{3} :] {4}\n".format(
+            timestamp, pid, level_str, component_str, message_str)
 
         new_path = self._get_log_filename()
 
@@ -326,44 +506,51 @@ class ChronicleLogger:
             self.log_rotation()
             self.__old_logfile_path__ = new_path
             if self.isDebug():
-                # NEW: Replaced f-string with .format(); handle new_path decode
                 new_path_decoded = new_path.decode('utf-8') if isinstance(new_path, bytes) else new_path
-                header = "[{0}] pid:{1} [INFO] @logger :] Using {2}\n".format(timestamp, pid, new_path_decoded)
+                header = "[{0}] pid:{1} [INFO] @logger :] Using {2}\n".format(
+                    timestamp, pid, new_path_decoded)
                 log_entry = header + log_entry
 
         if self._has_write_permission(new_path):
             if level_str in ("ERROR", "CRITICAL", "FATAL"):
-                print(log_entry.strip(), file=sys.stderr)
+                self.prn_err(log_entry.strip())
             else:
-                print(log_entry.strip())
+                self.prn(log_entry.strip())
             self.write_to_file(log_entry)
 
     def _has_write_permission(self, file_path):
-        # Example for _has_write_permission
+        """
+        Test whether we can append to the given file.
+
+        Returns:
+            bool: True if writable, False otherwise (prints warning to stderr)
+        """
         try:
             with open(file_path, 'a'):
                 return True
         except:
-            # NEW: Version-conditional for multi-exceptions: tuple in Py3, comma-tuple in Py2
             if sys.version_info[0] < 3:
                 exc_type, exc_value, exc_tb = sys.exc_info()
-                if issubclass(exc_type, (OSError, IOError)):  # Check Py2 equivalents
-                    e = exc_value
-                    print("Permission denied for writing to {0}".format(file_path), file=sys.stderr)
+                if issubclass(exc_type, (OSError, IOError)):
+                    self.prn_err("Permission denied for writing to {0}".format(file_path))
                     return False
             else:
                 exc_type, exc_value, exc_tb = sys.exc_info()
                 if issubclass(exc_type, (OSError, IOError)):
-                    e = exc_value
-                    print("Permission denied for writing to {0}".format(file_path), file=sys.stderr)
+                    self.prn_err("Permission denied for writing to {0}".format(file_path))
                     return False
 
     def write_to_file(self, log_entry):
-        # NEW: Use io_open for encoding support in Py2/3
+        """Append log entry to current log file using UTF-8 encoding."""
         with io_open(self.__current_logfile_path__, 'a', encoding='utf-8') as f:
             f.write(log_entry)
 
     def log_rotation(self):
+        """
+        Trigger log maintenance when date changes:
+        - archive old logs
+        - remove very old logs
+        """
         if not os.path.exists(self.__logdir__) or not os.listdir(self.__logdir__):
             return
         self.archive_old_logs()
@@ -371,53 +558,93 @@ class ChronicleLogger:
 
     def archive_old_logs(self):
         try:
+            now = self.time_provider.now()  # ← Add this
+            
             for file in os.listdir(self.__logdir__):
                 if file.endswith(".log"):
                     date_part = file.split('-')[-1].split('.')[0]
                     try:
                         log_date = datetime.strptime(date_part, '%Y%m%d')
-                        if (datetime.now() - log_date).days > self.LOG_ARCHIVE_DAYS:
+                        if (now - log_date).days > self.LOG_ARCHIVE_DAYS:
                             self._archive_log(file)
                     except ValueError:
                         continue
         except Exception:
-            # NEW: Cross-version exception handling with sys.exc_info() for Py2/3 compat (avoids comma/as syntax errors; binds e safely)
             exc_type, exc_value, exc_tb = sys.exc_info()
-            e = exc_value  # Access e in both Py2 and Py3
-            # NEW: Replaced f-string with .format() (already done, but confirmed for compat)
-            print("Error during archive: {0}".format(e), file=sys.stderr)
-            
+            e = exc_value
+            self.prn_err("Error during archive: {0}".format(e))
 
     def _archive_log(self, filename):
+        """Internal: archive single log file to tar.gz and remove original."""
         log_path = os.path.join(self.__logdir__, filename)
         archive_path = log_path + ".tar.gz"
         try:
             with tarfile.open(archive_path, "w:gz") as tar:
                 tar.add(log_path, arcname=filename)
             os.remove(log_path)
-            # NEW: Replaced f-string with .format()
-            print("Archived log file: {0}".format(archive_path))
+            self.prn("Archived log file: {0}".format(archive_path))
         except Exception:
-            # NEW: Cross-version exception handling with sys.exc_info() for Py2/3 compat (avoids comma/as syntax errors; binds e safely)
             exc_type, exc_value, exc_tb = sys.exc_info()
-            e = exc_value  # Access e in both Py2 and Py3
-            # NEW: Replaced f-string with .format()
-        print("Error archiving {0}: {1}".format(filename, e), file=sys.stderr)
+            e = exc_value
+            self.prn_err("Error archiving {0}: {1}".format(filename, e))
 
     def remove_old_logs(self):
+        """
+        Permanently delete:
+        - Original .log files older than LOG_REMOVAL_DAYS (30)
+        - Archived .tar.gz files older than LOG_REMOVAL_DAYS (30)
+        """
         try:
-            for file in os.listdir(self.__logdir__):
-                if file.endswith(".log"):
-                    date_part = file.split('-')[-1].split('.')[0]
+            now = self.time_provider.now()
+            removal_threshold = now - self.time_provider.timedelta(days=self.LOG_REMOVAL_DAYS)
+
+            for filename in os.listdir(self.__logdir__):
+                full_path = os.path.join(self.__logdir__, filename)
+
+                # Skip if not a log or archive file
+                if not (filename.endswith(".log") or filename.endswith(".log.tar.gz")):
+                    continue
+
+                # Extract date part (works for both .log and .log.tar.gz)
+                try:
+                    # Take part before the first .log or .tar.gz
+                    base = filename.rsplit('.log', 1)[0]
+                    date_part = base.rsplit('-', 1)[-1]
+                    log_date = datetime.strptime(date_part, '%Y%m%d')
+                except (ValueError, IndexError):
+                    continue  # Skip invalid filenames
+
+                if log_date < removal_threshold:
+                    if self.isDebug():
+                        self.prn(f"Removing old log file: {full_path}")
                     try:
-                        log_date = datetime.strptime(date_part, '%Y%m%d')
-                        if (datetime.now() - log_date).days > self.LOG_REMOVAL_DAYS:
-                            os.remove(os.path.join(self.__logdir__, file))
-                    except ValueError:
-                        continue
-        except Exception:
-            # NEW: Cross-version exception handling with sys.exc_info() for Py2/3 compat (avoids comma/as syntax errors; binds e safely)
-            exc_type, exc_value, exc_tb = sys.exc_info()
-            e = exc_value  # Access e in both Py2 and Py3
-            # NEW: Replaced f-string with .format()
-            print("Error during removal: {0}".format(e), file=sys.stderr)
+                        os.remove(full_path)
+                    except OSError as e:
+                        self.prn_err(f"Failed to remove {full_path}: {e}")
+
+        except Exception as e:
+            self.prn_err(f"Error during removal process: {e}")
+
+    def currentLogFile(self):
+        """
+        Return the full path to the current active log file.
+        
+        Returns:
+            str: Absolute path to the log file being written to (e.g. /path/to/test-app-20251225.log)
+                 Returns empty string if not initialized properly.
+        """
+        if self.__current_logfile_path__ is None:
+            return ""
+        # Convert bytes back to str (since we store it as c_char_p bytes)
+        path_bytes = self._get_log_filename()
+        return path_bytes.decode('utf-8') if isinstance(path_bytes, bytes) else path_bytes    
+
+    def absoluteLogDir(self):
+        """
+        Return the absolute path to the current log directory.
+        """
+        if self.__logdir__ is None:
+            return ""
+        dir_bytes = self.__logdir__
+        return dir_bytes.decode('utf-8') if isinstance(dir_bytes, bytes) else dir_bytes
+    
